@@ -269,7 +269,6 @@ class OMR_EXTENSIBLE CodeGenerator
 
    TR_BitVector *_localsThatAreStored;
    int32_t _numLocalsWhenStoreAnalysisWasDone;
-   TR_HashTabInt _uncommmonedNodes;               // uncommoned nodes keyed by the original nodes
    List<TR_Pair<TR::Node, int32_t> > _ialoadUnneeded;
 
    public:
@@ -1336,8 +1335,6 @@ class OMR_EXTENSIBLE CodeGenerator
    void setEnableRefinedAliasSets() {_enabledFlags.set(EnableRefinedAliasSets);}
 
    // --------------------------------------------------------------------------
-
-   TR::Node *createOrFindClonedNode(TR::Node *node, int32_t numChildren);
 
    void zeroOutAutoOnEdge(TR::SymbolReference * liveAutoSym, TR::Block *block, TR::Block *succBlock, TR::list<TR::Block*> *newBlocks, TR_ScratchList<TR::Node> *fsdStores);
 
