@@ -6760,6 +6760,138 @@ TR::Node *laddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    return node;
    }
 
+TR::Node *fpAddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   TR::Node *firstChild = node->getFirstChild();
+   TR::Node *secondChild = node->getSecondChild();
+
+   if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
+   if (isOperationFPCompliant(node, secondChild, s)) secondChild->setIsFPStrictCompliant(true);
+
+   TR::ILOpCode firstChildOp  = firstChild->getOpCode();
+   TR::ILOpCode secondChildOp = secondChild->getOpCode();
+   TR::ILOpCode nodeOp        = node->getOpCode();
+
+   if (nodeOp.isAdd() && firstChildOp.isNeg())
+      {
+      // Turn add with first child negated into a subtract
+      if ((nodeOp.isFloat() && performTransformation(s->comp(), "%sReduced fadd with negated first child in node [%s] to fsub\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+          (nodeOp.isDouble() && performTransformation(s->comp(), "%sReduced dadd with negated first child in node [%s] to dsub\n", s->optDetailString(), node->getName(s->getDebug()))))
+         {
+         s->anchorChildren(node, s->_curTree);
+         TR::Node *newFirstChild = firstChild->getFirstChild();
+         if (nodeOp.isFloat())
+            TR::Node::recreate(node, TR::fsub);
+         else if (nodeOp.isDouble())
+            TR::Node::recreate(node, TR::dsub);
+         node->setAndIncChild(1, newFirstChild);
+         node->setChild(0, secondChild);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         node = s->simplify(node, block);
+         s->_alteredBlock = true;
+         }      
+      }
+   else if (nodeOp.isAdd() && secondChildOp.isNeg())
+      {
+      // Turn add with second child negated into a subtract
+      if ((nodeOp.isFloat() && performTransformation(s->comp(), "%sReduced fadd with negated second child in node [%s] to fsub\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+          (nodeOp.isDouble() && performTransformation(s->comp(), "%sReduced dadd with negated second child in node [%s] to dsub\n", s->optDetailString(), node->getName(s->getDebug()))))
+         {
+         s->anchorChildren(node, s->_curTree);
+         TR::Node *newSecondChild = secondChild->getFirstChild();
+         if (nodeOp.isFloat())
+            TR::Node::recreate(node, TR::fsub);
+         else if (nodeOp.isDouble())
+            TR::Node::recreate(node, TR::dsub);
+         node->setAndIncChild(1, newSecondChild);
+         node->setChild(0, firstChild);
+         secondChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         node = s->simplify(node, block);
+         s->_alteredBlock = true;
+         }
+      }
+   else if (nodeOp.isAdd() &&
+            firstChildOp.isMul() &&
+            firstChild->getReferenceCount() == 1 &&
+            secondChildOp.isMul() &&
+            secondChild->getReferenceCount() == 1)
+      {
+      // reduce mul operations by factoring
+      TR::Node * llChild     = firstChild->getFirstChild();
+      TR::Node * lrChild     = firstChild->getSecondChild();
+      TR::Node * rlChild     = secondChild->getFirstChild();
+      TR::Node * rrChild     = secondChild->getSecondChild();
+      TR::Node * factorChild = NULL;
+      
+      if (llChild == rlChild)
+         {
+         factorChild = llChild;
+         secondChild->setChild(0, lrChild);
+         }
+      else if (llChild == rrChild)
+         {
+         factorChild = llChild;
+         secondChild->setChild(1, lrChild);
+         }
+      else if (lrChild == rlChild)
+         {
+         factorChild = lrChild;
+         secondChild->setChild(0, llChild);
+         }
+      else if (lrChild == rrChild)
+         {
+         factorChild = lrChild;
+         secondChild->setChild(1, llChild);
+         }
+
+      // if invariance info available, do not group invariant
+      // and non-invariant terms together
+      // also, avoid conflict with Rule 13
+      TR_RegionStructure * region;
+      if (factorChild &&
+          !s->getLastRun()  &&
+          (region = s->containingStructure()) &&
+          (isExprInvariant(region, secondChild->getFirstChild()) !=
+           isExprInvariant(region, secondChild->getSecondChild()) ||
+           isExprInvariant(region, factorChild)))  // to avoid conflict with Rule 13
+         {
+         factorChild = NULL;
+         }
+
+      if (!factorChild ||
+          !(nodeOp.isFloat() && performTransformation(s->comp(), "%sFactored fadd with distributed fmul in node [%s]\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+          !(nodeOp.isDouble() && performTransformation(s->comp(), "%sFactored dadd with distributed dmul in node [%s]\n", s->optDetailString(), node->getName(s->getDebug()))))
+         {
+         secondChild->setChild(0, rlChild);
+         secondChild->setChild(1, rrChild);
+         }
+      else
+         {
+         if (nodeOp.isFloat())
+            {
+            TR::Node::recreate(node, TR::fmul);
+            TR::Node::recreate(secondChild, TR::fadd);
+            }
+         else if (nodeOp.isDouble())
+            {
+            TR::Node::recreate(node, TR::dmul);
+            TR::Node::recreate(secondChild, TR::dadd);
+            }
+         node->setChild(0, factorChild)->decReferenceCount();
+         firstChild->decReferenceCount();
+         secondChild->setVisitCount(0);
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         secondChild = s->simplify(secondChild, block);
+         node->setChild(1, secondChild);
+         }
+      }
+
+   return node;
+   }
+
 TR::Node *faddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
@@ -6787,15 +6919,9 @@ TR::Node *faddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 
    // In IEEE FP Arithmetic, f + -0.0 is f
    // Pretend to be an int before doing the comparison
-   //
    BINARY_IDENTITY_OP(FloatBits, FLOAT_NEG_ZERO)
 
-   firstChild = node->getFirstChild();
-   secondChild = node->getSecondChild();
-
-   if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
-   if (isOperationFPCompliant(node, secondChild, s))secondChild->setIsFPStrictCompliant(true);
-   return node;
+   return fpAddSimplifier(node, block, s);
    }
 
 TR::Node *daddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -6823,12 +6949,9 @@ TR::Node *daddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    // BINARY_IDENTITY_OP(LongInt, DOUBLE_POS_ZERO)
    // In IEEE FP Arithmetic, d + -0.0 is d
    // Pretend to be an int before doing the comparison
-   //
    BINARY_IDENTITY_OP(LongInt, DOUBLE_NEG_ZERO)
-
-   if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
-   if (isOperationFPCompliant(node, secondChild, s))secondChild->setIsFPStrictCompliant(true);
-   return node;
+   
+   return fpAddSimplifier(node, block, s);
    }
 
 TR::Node *baddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -6906,7 +7029,7 @@ TR::Node *isubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
          setCCSubSigned(0, 0, 0, node, s);
          }
 
-      foldIntConstant(node, 0, s, true /* !anchorChilren */);
+      foldIntConstant(node, 0, s, true /* !anchorChildren */);
 
       return node;
       }
@@ -7855,6 +7978,171 @@ TR::Node *lsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    return node;
    }
 
+TR::Node *fpSubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   TR::Node *firstChild = node->getFirstChild();
+   TR::Node *secondChild = node->getSecondChild();
+
+   if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
+   if (isOperationFPCompliant(node, secondChild, s)) secondChild->setIsFPStrictCompliant(true);
+
+   TR::ILOpCode firstChildOp  = firstChild->getOpCode();
+   TR::ILOpCode secondChildOp = secondChild->getOpCode();
+   TR::ILOpCode nodeOp        = node->getOpCode();
+
+   // Check case where both nodes are the same and replace with 0.0
+   if (nodeOp.isSub() && firstChild == secondChild)
+      {
+      if (nodeOp.isFloat())
+         foldFloatConstant(node, 0.0, s);
+      else if (nodeOp.isDouble())
+         foldDoubleConstant(node, 0.0, s);
+      return node;
+      }
+   
+   if (nodeOp.isSub() && secondChildOp.isNeg())
+      {
+      // Turn sub with second child neg into add
+      if ((nodeOp.isFloat() && performTransformation(s->comp(), "%sReduced fsub with negated second child in node [%s] to fadd\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+          (nodeOp.isDouble() && performTransformation(s->comp(), "%sReduced dsub with negated second child in node [%s] to dadd\n", s->optDetailString(), node->getName(s->getDebug()))))
+         {
+         TR::Node * newSecondChild = secondChild->getFirstChild();
+         if (nodeOp.isFloat())
+            TR::Node::recreate(node, TR::fadd);
+         else if (nodeOp.isDouble())
+            TR::Node::recreate(node, TR::dadd);
+         node->setAndIncChild(1, newSecondChild);
+         secondChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         node = s->simplify(node, block);
+         }
+      }
+   else if (nodeOp.isSub() && firstChildOp.isNeg())
+      {
+      // Turn sub with first child neg into neg with add child. Isn't quicker, but normalizes expressions and drives negs up the tree
+      if ((nodeOp.isFloat() && performTransformation(s->comp(), "%sReduced fsub with negated first child in node [%s] to fneg of fadd\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+          (nodeOp.isDouble() && performTransformation(s->comp(), "%sReduced dsub with negated first child in node [%s] to dneg of dadd\n", s->optDetailString(), node->getName(s->getDebug()))))
+         {
+         TR::Node * newFirstChild = firstChild->getFirstChild();
+         TR::Node * newNode = NULL;
+         if (nodeOp.isFloat())
+            {
+            TR::Node::recreate(node, TR::fneg);
+            newNode = TR::Node::create(node, TR::fadd, 2);
+            }
+         else if (nodeOp.isDouble())
+            {
+            TR::Node::recreate(node, TR::dneg);
+            newNode = TR::Node::create(node, TR::dadd, 2);
+            }
+         newNode->setAndIncChild(0, newFirstChild);
+         newNode->setChild(1, secondChild);
+         node->setChild(1, NULL);
+         node->setAndIncChild(0, newNode);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         node = s->simplify(node, block);
+         }
+      }
+   else if (nodeOp.isSub() &&
+            firstChildOp .isMul() &&
+            firstChild->getReferenceCount() == 1 &&
+            secondChildOp.isMul() &&
+            secondChild->getReferenceCount() == 1)
+      {
+      // reduce mul operations by factoring
+      TR::Node * llChild     = firstChild->getFirstChild();
+      TR::Node * lrChild     = firstChild->getSecondChild();
+      TR::Node * rlChild     = secondChild->getFirstChild();
+      TR::Node * rrChild     = secondChild->getSecondChild();
+      TR::Node * factorChild = NULL;
+         
+      if (llChild == rlChild)
+         {
+         factorChild = llChild;
+         secondChild->setChild(0, lrChild);
+         }
+      else if (llChild == rrChild)
+         {
+         factorChild = llChild;
+         secondChild->setChild(0, lrChild);
+         secondChild->setChild(1, rlChild);
+         }
+      else if (lrChild == rlChild)
+         {
+         factorChild = lrChild;
+         secondChild->setChild(0, llChild);
+         }
+      else if (lrChild == rrChild)
+         {
+         factorChild = lrChild;
+         secondChild->setChild(0, llChild);
+         secondChild->setChild(1, rlChild);
+         }
+
+      // if invariance info available, do not group invariant
+      // and non-invariant terms together
+      TR_RegionStructure * region;
+      if (factorChild && (region = s->containingStructure()) &&
+          !s->getLastRun()  &&
+          (isExprInvariant(region, secondChild->getFirstChild()) !=
+           isExprInvariant(region, secondChild->getSecondChild()) ||
+           isExprInvariant(region, factorChild)))  // to avoid conflict with rule 13
+         {
+         factorChild = NULL;
+         }
+
+      if (!factorChild ||
+          !(nodeOp.isFloat() && performTransformation(s->comp(), "%sFactored fsub with distributed fmul in node [%s]\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+          !(nodeOp.isDouble() && performTransformation(s->comp(), "%sFactored dsub with distributed dmul in node [%s]\n", s->optDetailString(), node->getName(s->getDebug()))))
+         {
+         secondChild->setChild(0, rlChild);
+         secondChild->setChild(1, rrChild);
+         }
+      else
+         {
+         if (nodeOp.isFloat())
+            {
+            TR::Node::recreate(node, TR::fmul);
+            TR::Node::recreate(secondChild, TR::fsub);
+            }
+         else if (nodeOp.isDouble())
+            {
+            TR::Node::recreate(node, TR::dmul);
+            TR::Node::recreate(secondChild, TR::dsub);
+            }
+         node->setChild(0, factorChild)->decReferenceCount();
+         firstChild->decReferenceCount();
+         secondChild->setVisitCount(0);
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         secondChild = s->simplify(secondChild, block);
+         node->setChild(1, secondChild);
+         }
+      }
+   else if (nodeOp.isSub() && 
+            firstChildOp.isLoadConst() &&
+            ((nodeOp.isFloat() && firstChild->getFloat() == 0.0 && performTransformation(s->comp(), "%sReduce fsub from 0.0 [%s] to fneg \n",s->optDetailString(),node->getName(s->getDebug()))) ||
+             (nodeOp.isDouble() && firstChild->getDouble() == 0.0 && performTransformation(s->comp(), "%sReduce dsub from 0.0 [%s] to dneg \n",s->optDetailString(),node->getName(s->getDebug())))))
+      {
+      if (nodeOp.isFloat())
+         TR::Node::recreate(node, TR::fneg);
+      else if (nodeOp.isDouble())
+         TR::Node::recreate(node, TR::dneg);
+      node->setVisitCount(0);
+      node->getFirstChild()->recursivelyDecReferenceCount();
+      node->setChild(0, node->getSecondChild());
+      node->setNumChildren(1);
+      s->_alteredBlock = true;
+      return node;
+      }
+
+   return node;
+   }
+
 TR::Node *fsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
@@ -7883,13 +8171,7 @@ TR::Node *fsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    // If we would have ranges about f we might use the simplification in some cases
    // BINARY_IDENTITY_OP(Int, FLOAT_NEG_ZERO)
 
-   firstChild  = node->getFirstChild();
-   secondChild = node->getSecondChild();
-
-   if (isOperationFPCompliant(node,firstChild, s)) firstChild->setIsFPStrictCompliant(true);
-   if (isOperationFPCompliant(node,secondChild, s))secondChild->setIsFPStrictCompliant(true);
-
-   return node;
+   return fpSubSimplifier(node, block, s);
    }
 
 TR::Node *dsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -7915,12 +8197,9 @@ TR::Node *dsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    // BINARY_IDENTITY_OP(LongInt, DOUBLE_NEG_ZERO)
    // In IEEE FP Arithmetic, d - -0.0 is d
    // Pretend to be an int before doing the comparison
-   //
    BINARY_IDENTITY_OP(LongInt, DOUBLE_POS_ZERO)
 
-   if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
-   if (isOperationFPCompliant(node, secondChild, s))secondChild->setIsFPStrictCompliant(true);
-   return node;
+   return fpSubSimplifier(node, block, s);
    }
 
 TR::Node *bsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -9793,7 +10072,7 @@ TR::Node *lnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 TR::Node *fnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
-
+   
    TR::Node * firstChild = node->getFirstChild();
 
    if (firstChild->getOpCode().isLoadConst())
