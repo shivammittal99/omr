@@ -8249,9 +8249,67 @@ TR::Node *imulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    orderChildren(node, firstChild, secondChild, s);
    BINARY_IDENTITY_OR_ZERO_OP(int32_t, Int, 1, 0)
 
+   firstChild = node->getFirstChild();
+   secondChild = node->getSecondChild();
+
    TR::ILOpCodes firstChildOp  = firstChild->getOpCodeValue();
    TR::ILOpCodes secondChildOp = secondChild->getOpCodeValue();
 
+   bool firstChildNegated = (TR::ineg == firstChildOp);
+   bool secondChildNegated = (TR::ineg == secondChildOp);
+   bool bothChildrenNegated = (firstChildNegated && secondChildNegated);
+
+   // transform (-a)*(-b) to (a*b)
+   if (bothChildrenNegated)
+      {
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(-B) -> A*B\n", s->optDetailString(), node))
+        { 
+        TR::Node * newFirstChild= s->replaceNode(firstChild,firstChild->getFirstChild(), s->_curTree);
+        TR::Node * newSecondChild= s->replaceNode(secondChild,secondChild->getFirstChild(), s->_curTree);
+        node->setChild(0,newFirstChild);
+        node->setChild(1,newSecondChild);
+        return s->simplify(node, block);
+        }
+      }
+   else if (firstChildNegated)
+      {
+      // Transform (-a)*b into -(a*b). Drives ineg up the tree
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(B) -> -(A*B)\n", s->optDetailString(), node))
+         { // remove negates
+         TR::Node * newFirstChild = firstChild->getFirstChild();
+         TR::Node::recreate(node, TR::ineg);
+         TR::Node *newNode = TR::Node::create(node, TR::imul, 2);
+         newNode->setAndIncChild(0, newFirstChild);
+         newNode->setChild(1, secondChild);
+         node->setAndIncChild(0, newNode);
+         node->setChild(1, NULL);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         return s->simplify(node, block);
+         }
+      }
+   else if (secondChildNegated)
+      {
+      // Transform a*(-b) into -(a*b). Drives ineg up the tree
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (A)*(-B) -> -(A*B)\n", s->optDetailString(), node))
+         { // remove negates
+         TR::Node * newSecondChild = secondChild->getFirstChild();
+         TR::Node::recreate(node, TR::ineg);
+         TR::Node *newNode = TR::Node::create(node, TR::imul, 2);
+         newNode->setChild(0, firstChild);
+         newNode->setAndIncChild(1, newSecondChild);
+         node->setAndIncChild(0, newNode);
+         node->setChild(1, NULL);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         return s->simplify(node, block);
+         }
+      }
+   
    // a*(-c) = -(a*c)   // move up ineg for better composing
    if (secondChildOp == TR::iconst &&
        secondChild->getInt() < 0 &&
@@ -8515,7 +8573,6 @@ TR::Node *imulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    //    e1  e2          e1  c e2  c
    else if (region &&
        node->getOpCodeValue() == TR::imul &&
-
        isExprInvariant(region, node->getSecondChild()) &&
        !isExprInvariant(region, node->getFirstChild()) &&
        node->getFirstChild()->getOpCodeValue() == TR::isub)
@@ -8590,6 +8647,62 @@ TR::Node *lmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    // TODO - strength reduction
    TR::ILOpCodes firstChildOp  = firstChild->getOpCodeValue();
    TR::ILOpCodes secondChildOp = secondChild->getOpCodeValue();
+
+   bool firstChildNegated = (TR::lneg == firstChildOp);
+   bool secondChildNegated = (TR::lneg == secondChildOp);
+   bool bothChildrenNegated = (firstChildNegated && secondChildNegated);
+
+   // transform (-a)*(-b) to (a*b)
+   if (bothChildrenNegated)
+      {
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(-B) -> A*B\n", s->optDetailString(), node))
+        { 
+        TR::Node * newFirstChild= s->replaceNode(firstChild,firstChild->getFirstChild(), s->_curTree);
+        TR::Node * newSecondChild= s->replaceNode(secondChild,secondChild->getFirstChild(), s->_curTree);
+        node->setChild(0,newFirstChild);
+        node->setChild(1,newSecondChild);
+        return s->simplify(node, block);
+        }
+      }
+   else if (firstChildNegated)
+      {
+      // Transform (-a)*b into -(a*b). Drives lneg up the tree
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(B) -> -(A*B)\n", s->optDetailString(), node))
+         { // remove negates
+         TR::Node * newFirstChild = firstChild->getFirstChild();
+         TR::Node::recreate(node, TR::lneg);
+         TR::Node *newNode = TR::Node::create(node, TR::lmul, 2);
+         newNode->setAndIncChild(0, newFirstChild);
+         newNode->setChild(1, secondChild);
+         node->setAndIncChild(0, newNode);
+         node->setChild(1, NULL);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         return s->simplify(node, block);
+         }
+      }
+   else if (secondChildNegated)
+      {
+      // Transform a*(-b) into -(a*b). Drives lneg up the tree
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (A)*(-B) -> -(A*B)\n", s->optDetailString(), node))
+         { // remove negates
+         TR::Node * newSecondChild = secondChild->getFirstChild();
+         TR::Node::recreate(node, TR::lneg);
+         TR::Node *newNode = TR::Node::create(node, TR::lmul, 2);
+         newNode->setChild(0, firstChild);
+         newNode->setAndIncChild(1, newSecondChild);
+         node->setAndIncChild(0, newNode);
+         node->setChild(1, NULL);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         return s->simplify(node, block);
+         }
+      }
+
    if (firstChildOp == TR::lmul && firstChild->getReferenceCount() == 1)
       {
       TR::Node * lrChild = firstChild->getSecondChild();
@@ -8778,6 +8891,311 @@ TR::Node *lmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    return node;
    }
 
+TR::Node *fpMulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   TR::Node *firstChild = node->getFirstChild();
+   TR::Node *secondChild = node->getSecondChild();
+
+   TR::ILOpCode firstChildOp = firstChild->getOpCode();
+   TR::ILOpCode secondChildOp = secondChild->getOpCode();
+   TR::ILOpCode nodeOp = node->getOpCode();
+
+   bool firstChildNegated = firstChildOp.isNeg();
+   bool secondChildNegated = secondChildOp.isNeg();
+   bool bothChildrenNegated = (firstChildNegated && secondChildNegated);
+
+   // transform (-a)*(-b) to (a*b)
+   if (bothChildrenNegated)
+      {
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(-B) -> A*B\n", s->optDetailString(), node))
+         { 
+         TR::Node * newFirstChild= s->replaceNode(firstChild,firstChild->getFirstChild(), s->_curTree);
+         TR::Node * newSecondChild= s->replaceNode(secondChild,secondChild->getFirstChild(), s->_curTree);
+         node->setChild(0,newFirstChild);
+         node->setChild(1,newSecondChild);
+         return s->simplify(node, block);
+         }
+      }
+   else if (firstChildNegated)
+      {
+      // Transform (-a)*b into -(a*b). Drives neg up the tree
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(B) -> -(A*B)\n", s->optDetailString(), node))
+         { // remove negates
+         TR::Node * newFirstChild = firstChild->getFirstChild();
+         TR::Node * newNode = NULL;
+         if (nodeOp.isFloat())
+            {
+            TR::Node::recreate(node, TR::fneg);
+            newNode = TR::Node::create(node, TR::fmul, 2);
+            }
+         else
+            {
+            TR::Node::recreate(node, TR::dneg);
+            newNode = TR::Node::create(node, TR::dmul, 2);
+            }
+         newNode->setAndIncChild(0, newFirstChild);
+         newNode->setChild(1, secondChild);
+         node->setAndIncChild(0, newNode);
+         node->setChild(1, NULL);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         return s->simplify(node, block);
+         }
+      }
+   else if (secondChildNegated)
+      {
+      // Transform a*(-b) into -(a*b). Drives neg up the tree
+      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (A)*(-B) -> -(A*B)\n", s->optDetailString(), node))
+         { // remove negates
+         TR::Node * newSecondChild = secondChild->getFirstChild();
+         TR::Node * newNode = NULL;
+         if (nodeOp.isFloat())
+            {
+            TR::Node::recreate(node, TR::fneg);
+            newNode = TR::Node::create(node, TR::fmul, 2);
+            }
+         else
+            {
+            TR::Node::recreate(node, TR::dneg);
+            newNode = TR::Node::create(node, TR::dmul, 2);
+            }
+         newNode->setChild(0, firstChild);
+         newNode->setAndIncChild(1, newSecondChild);
+         node->setAndIncChild(0, newNode);
+         node->setChild(1, NULL);
+         node->setNumChildren(1);
+         firstChild->recursivelyDecReferenceCount();
+         node->setVisitCount(0);
+         s->_alteredBlock = true;
+         return s->simplify(node, block);
+         }
+      }
+
+   firstChild = node->getFirstChild();
+   secondChild = node->getSecondChild();
+
+   firstChildOp = firstChild->getOpCode();
+   secondChildOp = secondChild->getOpCode();
+   nodeOp = node->getOpCode();
+
+   if (nodeOp.isMul() && firstChildOp.isMul() && firstChild->getReferenceCount() == 1)
+      {
+      TR::Node * lrChild = firstChild->getSecondChild();
+      if (lrChild->getOpCode().isLoadConst())
+         {
+         if (secondChildOp.isLoadConst())
+            {
+            // (a*c1)*c2 => a*(c1*c2)
+            if ((nodeOp.isFloat() && performTransformation(s->comp(), "%sFound (a*c1)*c2 => a*(c1*c2) in fmul [%s]\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+                (nodeOp.isDouble() && performTransformation(s->comp(), "%sFound (a*c1)*c2 => a*(c1*c2) in dmul [%s]\n", s->optDetailString(), node->getName(s->getDebug()))))
+               {
+               if (secondChild->getReferenceCount() == 1)
+                  {
+                  if(nodeOp.isFloat())
+                     secondChild->setFloat(TR::Compiler->arith.floatMultiplyFloat(lrChild->getFloat(), secondChild->getFloat()));
+                  else if(nodeOp.isDouble())
+                     secondChild->setDouble(TR::Compiler->arith.doubleMultiplyDouble(lrChild->getDouble(), secondChild->getDouble()));
+                  }
+               else
+                  {
+                  TR::Node * foldedConstChild = NULL;
+                  if(nodeOp.isFloat())
+                     {
+                     foldedConstChild = TR::Node::create(secondChild, TR::fconst, 0.0);
+                     foldedConstChild->setFloat(TR::Compiler->arith.floatMultiplyFloat(lrChild->getFloat(), secondChild->getFloat()));
+                     }
+                  else if(nodeOp.isDouble())
+                     {
+                     foldedConstChild = TR::Node::create(secondChild, TR::dconst, 0.0);
+                     foldedConstChild->setDouble(TR::Compiler->arith.doubleMultiplyDouble(lrChild->getDouble(), secondChild->getDouble()));
+                     }
+                  node->setAndIncChild(1, foldedConstChild);
+                  secondChild->recursivelyDecReferenceCount();
+                  }
+               node->setAndIncChild(0, firstChild->getFirstChild());
+               firstChild->recursivelyDecReferenceCount();
+               node->setVisitCount(0);
+               s->_alteredBlock = true;
+               }
+            }
+         // (a*c1)*b => (a*b)*c1
+         else if ((nodeOp.isFloat() && performTransformation(s->comp(), "%sFound (a*c1)*b => (a*b)*c1 in fmul [%s]\n", s->optDetailString(), node->getName(s->getDebug()))) ||
+                  (nodeOp.isDouble() && performTransformation(s->comp(), "%sFound (a*c1)*b => (a*b)*c1 in dmul [%s]\n", s->optDetailString(), node->getName(s->getDebug()))))
+            {
+            // move constants up the tree so they will tend to get merged together
+            node->setChild(1, lrChild);
+            firstChild->setChild(1, secondChild);
+            node->setVisitCount(0);
+            s->_alteredBlock = true;
+            }
+         }
+      }
+
+   firstChild = node->getFirstChild();
+   secondChild = node->getSecondChild();
+
+   firstChildOp = firstChild->getOpCode();
+   secondChildOp = secondChild->getOpCode();
+   nodeOp = node->getOpCode();
+   
+   if (s->reassociate())
+      {
+      TR_RegionStructure * region = s->containingStructure();
+
+      // R10:   *              *
+      //       / \            / \
+      //      *  c2    =>    e   *
+      //     / \                / \
+      //    e   c1             c2 c1
+      if (region &&
+         nodeOp.isMul() &&
+         isExprInvariant(region, secondChild) &&
+         firstChildOp.isMul() &&
+         !isExprInvariant(region, firstChild->getFirstChild()) &&
+         isExprInvariant(region, firstChild->getSecondChild()) &&
+         firstChild->getReferenceCount() == 1)
+         {
+         if (performTransformation(s->comp(), "%sApplied reassociation rule 10 to node 0x%p\n", s->optDetailString(), node))
+            {
+            TR::Node *e = firstChild->getFirstChild();
+            firstChild->setChild(0, secondChild);
+            node->setChild(1, firstChild);
+            node->setChild(0, e);
+            }
+         }
+
+      // R11:   *               +
+      //       / \             / \
+      //      +  c2    =>     *  c1*c2
+      //     / \             / \
+      //    e   c1          e   c2
+      if (region &&
+         node->getOpCode().isMul() &&
+         isExprInvariant(region, node->getSecondChild()) &&
+         node->getFirstChild()->getOpCode().isAdd() &&
+         !isExprInvariant(region, node->getFirstChild()->getFirstChild()) &&
+         isExprInvariant(region, node->getFirstChild()->getSecondChild()) &&
+         node->getFirstChild()->getReferenceCount() == 1)
+         {
+         if (performTransformation(s->comp(), "%sApplied reassociation rule 11 to node 0x%p\n", s->optDetailString(), node))
+            {
+            TR::Node * newSecondChild = NULL;
+            if(nodeOp.isFloat())
+               {
+               TR::Node::recreate(node, TR::fadd);
+               newSecondChild = TR::Node::create(node, TR::fmul, 2);
+               TR::Node::recreate(node->getFirstChild(), TR::fmul);
+               }
+            else if(nodeOp.isDouble())
+               {
+               TR::Node::recreate(node, TR::dadd);
+               newSecondChild = TR::Node::create(node, TR::dmul, 2);
+               TR::Node::recreate(node->getFirstChild(), TR::dmul);
+               }
+            newSecondChild->setChild(0, node->getFirstChild()->getSecondChild());
+            newSecondChild->setAndIncChild(1, node->getSecondChild());
+            node->getFirstChild()->setChild(1, node->getSecondChild());
+            node->setAndIncChild(1, newSecondChild);
+
+            setExprInvariant(region, newSecondChild);
+            }
+         }
+      //                         +
+      // R13:   *               / \
+      //       / \             /   \
+      //      +   c    =>     *     *
+      //     / \             / \   / \
+      //    e1  e2          e1  c e2  c
+      else if (region &&
+               node->getOpCode().isMul() &&
+               isExprInvariant(region, node->getSecondChild()) &&
+               node->getFirstChild()->getOpCode().isAdd())
+         {
+         if (performTransformation(s->comp(), "%sApplied reassociation rule 13 to node 0x%p\n", s->optDetailString(), node))
+            {
+            TR::Node * mul1 = NULL;
+            TR::Node * mul2 = NULL;   
+            if(nodeOp.isFloat())
+               {
+               TR::Node::recreate(node, TR::fadd);
+               mul1 = TR::Node::create(node, TR::fmul, 2);
+               mul2 = TR::Node::create(node, TR::fmul, 2);
+               }
+            else if(nodeOp.isDouble())
+               {
+               TR::Node::recreate(node, TR::dadd);
+               mul1 = TR::Node::create(node, TR::dmul, 2);
+               mul2 = TR::Node::create(node, TR::dmul, 2);
+               }
+            TR::Node *firstChild = node->getFirstChild();
+            TR::Node *secondChild = node->getSecondChild();
+
+            mul1->setAndIncChild(0, firstChild->getFirstChild());
+            mul1->setAndIncChild(1, secondChild);
+
+            mul2->setAndIncChild(0, firstChild->getSecondChild());
+            mul2->setAndIncChild(1, secondChild);
+
+            node->setAndIncChild(0, mul1);
+            node->setAndIncChild(1, mul2);
+
+            firstChild->recursivelyDecReferenceCount();
+            secondChild->recursivelyDecReferenceCount();
+            }
+         }
+      //                         -
+      // R15:   *               / \
+      //       / \             /   \
+      //      -   c    =>     *     *
+      //     / \             / \   / \
+      //    e1  e2          e1  c e2  c
+      else if (region &&
+               node->getOpCode().isMul() &&
+               isExprInvariant(region, node->getSecondChild()) &&
+               !isExprInvariant(region, node->getFirstChild()) &&
+               node->getFirstChild()->getOpCode().isSub())
+         {
+         if (performTransformation(s->comp(), "%sApplied reassociation rule 15 to node 0x%p\n", s->optDetailString(), node))
+            {
+            TR::Node * mul1 = NULL;
+            TR::Node * mul2 = NULL;   
+
+            if(nodeOp.isFloat())
+               {
+               TR::Node::recreate(node, TR::fsub);
+               mul1 = TR::Node::create(node, TR::fmul, 2);
+               mul2 = TR::Node::create(node, TR::fmul, 2);
+               }
+            else if(nodeOp.isDouble())
+               {
+               TR::Node::recreate(node, TR::dsub);
+               mul1 = TR::Node::create(node, TR::dmul, 2);
+               mul2 = TR::Node::create(node, TR::dmul, 2);
+               }
+
+            TR::Node *firstChild = node->getFirstChild();
+            TR::Node *secondChild = node->getSecondChild();
+
+            mul1->setAndIncChild(0, firstChild->getFirstChild());
+            mul1->setAndIncChild(1, secondChild);
+
+            mul2->setAndIncChild(0, firstChild->getSecondChild());
+            mul2->setAndIncChild(1, secondChild);
+
+            node->setAndIncChild(0, mul1);
+            node->setAndIncChild(1, mul2);
+
+            firstChild->recursivelyDecReferenceCount();
+            secondChild->recursivelyDecReferenceCount();
+            }
+         }
+      }
+
+   return node;
+   }
+
 TR::Node *fmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
@@ -8805,24 +9223,7 @@ TR::Node *fmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
       BINARY_IDENTITY_OP(FloatBits, FLOAT_ONE)
       }
 
-   firstChild  = node->getFirstChild();
-   secondChild = node->getSecondChild();
-
-   bool firstChildNegated = (TR::fneg == firstChild->getOpCodeValue());
-   bool secondChildNegated = (TR::fneg == secondChild->getOpCodeValue());
-   bool bothChildrenNegated = (firstChildNegated && secondChildNegated);
-
-   if (bothChildrenNegated)
-      {
-      if (performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] (-A)*(-B) -> A*B\n", s->optDetailString(), node))
-        { // remove negates
-        TR::Node * newFirstChild= s->replaceNode(firstChild,firstChild->getFirstChild(), s->_curTree);
-        TR::Node * newSecondChild= s->replaceNode(secondChild,secondChild->getFirstChild(), s->_curTree);
-        node->setChild(0,newFirstChild);
-        node->setChild(1,newSecondChild);
-        }
-      }
-   return node;
+   return fpMulSimplifier(node, block, s);
    }
 
 TR::Node *dmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -8852,7 +9253,8 @@ TR::Node *dmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
       //
       BINARY_IDENTITY_OP(LongInt, DOUBLE_ONE)
       }
-   return node;
+
+   return fpMulSimplifier(node, block, s);
    }
 
 TR::Node *bmulSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
