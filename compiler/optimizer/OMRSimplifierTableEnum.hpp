@@ -112,8 +112,8 @@
    iremSimplifier,          // TR::iurem
    inegSimplifier,          // TR::ineg
    lnegSimplifier,          // TR::lneg
-   fnegSimplifier,          // TR::fneg
-   dnegSimplifier,          // TR::dneg
+   fpNegSimplifier,         // TR::fneg
+   fpNegSimplifier,         // TR::dneg
    bnegSimplifier,          // TR::bneg
    snegSimplifier,          // TR::sneg
 

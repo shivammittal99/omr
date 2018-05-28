@@ -68,8 +68,7 @@ TR::Node * bremSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s
 TR::Node * sremSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
 TR::Node * inegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
 TR::Node * lnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
-TR::Node * fnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
-TR::Node * dnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
+TR::Node * fpNegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
 TR::Node * bnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
 TR::Node * snegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
 TR::Node * constSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s);
