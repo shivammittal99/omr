@@ -55,12 +55,16 @@ public:
    float floatDivideFloat(float a, float b);
    float floatRemainderFloat(float a, float b);
    float floatNegate(float a);
+   float nextRepresentable(float a);
+   float previousRepresentable(float a);
    double doubleAddDouble(double a, double b);
    double doubleSubtractDouble(double a, double b);
    double doubleMultiplyDouble(double a, double b);
    double doubleDivideDouble(double a, double b);
    double doubleRemainderDouble(double a, double b);
    double doubleNegate(double a);
+   double nextRepresentable(double a);
+   double previousRepresentable(double a);
    double floatToDouble(float a);
    float doubleToFloat(double a);
    int64_t longRemainderLong(int64_t a, int64_t b);

@@ -80,6 +80,18 @@ OMR::ArithEnv::floatNegate(float a)
    return c;
    }
 
+float
+OMR::ArithEnv::nextRepresentable(float a)
+   {
+   return nextafter(a, FLOAT_POS_INFINITY);
+   }
+
+float
+OMR::ArithEnv::previousRepresentable(float a)
+   {
+   return nextafter(FLOAT_NEG_INFINITY, a);
+   }
+
 double
 OMR::ArithEnv::doubleAddDouble(double a, double b)
    {
@@ -120,6 +132,18 @@ OMR::ArithEnv::doubleNegate(double a)
    double c;
    c = -a;
    return c;
+   }
+
+double
+OMR::ArithEnv::nextRepresentable(double a)
+   {
+   return nextafter(a, DOUBLE_POS_INFINITY);
+   }
+
+double
+OMR::ArithEnv::previousRepresentable(double a)
+   {
+   return nextafter(DOUBLE_NEG_INFINITY, a);
    }
 
 double
