@@ -62,9 +62,17 @@ TR::Node *constrainCondBranch(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainDivChk(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainOverflowChk(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainUnsignedOverflowChk(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainDabs(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainDoubleConst(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainDload(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainDmul(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainDneg(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainFabs(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainFloatConst(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainFload(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainFloatCmp(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainFmul(OMR::ValuePropagation *vp, TR::Node *node);
+TR::Node *constrainFneg(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainGoto(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainI2l(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainIaload(OMR::ValuePropagation *vp, TR::Node *node);
@@ -82,9 +90,7 @@ TR::Node *constrainIumul(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainIneg(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainIabs(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainInstanceOf(OMR::ValuePropagation *vp, TR::Node *node);
-TR::Node *constrainIntAndFloatConstHelper(OMR::ValuePropagation *vp, TR::Node *node, int32_t value);
 TR::Node *constrainIntConst(OMR::ValuePropagation *vp, TR::Node *node);
-TR::Node *constrainFloatConst(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainIntLoad(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainIntStore(OMR::ValuePropagation *vp, TR::Node *node);
 TR::Node *constrainIor(OMR::ValuePropagation *vp, TR::Node *node);
@@ -166,8 +172,8 @@ const ValuePropagationPtr constraintHandlers[] =
    constrainAConst,          // TR::aconst
    constrainIntConst,        // TR::iconst
    constrainLongConst,       // TR::lconst
-   constrainFloatConst,        // TR::fconst
-   constrainLongConst,       // TR::dconst
+   constrainFloatConst,      // TR::fconst
+   constrainDoubleConst,     // TR::dconst
    constrainByteConst,       // TR::bconst
    constrainShortConst,      // TR::sconst
    constrainIntLoad,         // TR::iload
@@ -217,21 +223,21 @@ const ValuePropagationPtr constraintHandlers[] =
    constrainVcall,           // TR::call
    constrainAdd,             // TR::iadd
    constrainAdd,             // TR::ladd
-   constrainChildren,        // TR::fadd
-   constrainChildren,        // TR::dadd
+   constrainAdd,             // TR::fadd
+   constrainAdd,             // TR::dadd
    constrainAdd,             // TR::badd
    constrainAdd,             // TR::sadd
    constrainSubtract,        // TR::isub
    constrainSubtract,        // TR::lsub
-   constrainChildren,        // TR::fsub
-   constrainChildren,        // TR::dsub
+   constrainSubtract,        // TR::fsub
+   constrainSubtract,        // TR::dsub
    constrainSubtract,        // TR::bsub
    constrainSubtract,        // TR::ssub
    constrainSubtract,        // TR::asub    todo
    constrainImul,            // TR::imul
    constrainLmul,            // TR::lmul
-   constrainChildren,        // TR::fmul
-   constrainChildren,        // TR::dmul
+   constrainFmul,            // TR::fmul
+   constrainDmul,            // TR::dmul
    constrainChildren,        // TR::bmul
    constrainChildren,        // TR::smul
    constrainIumul,           // TR::iumul
@@ -252,15 +258,15 @@ const ValuePropagationPtr constraintHandlers[] =
    constrainIrem,            // TR::iurem
    constrainIneg,            // TR::ineg
    constrainLneg,            // TR::lneg
-   constrainChildren,        // TR::fneg
-   constrainChildren,        // TR::dneg
+   constrainFneg,            // TR::fneg
+   constrainDneg,            // TR::dneg
    constrainChildren,        // TR::bneg
    constrainChildren,        // TR::sneg
 
    constrainIabs,            // TR::iabs
    constrainLabs,            // TR::labs
-   constrainChildren,        // TR::fabs    todo
-   constrainChildren,        // TR::dabs    todo
+   constrainFabs,            // TR::fabs
+   constrainDabs,            // TR::dabs
 
    constrainIshl,            // TR::ishl
    constrainLshl,            // TR::lshl

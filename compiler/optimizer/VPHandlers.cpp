@@ -127,6 +127,22 @@ static void checkForNonNegativeAndOverflowProperties(OMR::ValuePropagation *vp, 
          if (low <= 0)
             node->setIsNonPositive(true);
          }
+      if (constraint->asFloatConst())
+         {
+         float low = constraint->asFloatConst()->getLowFloat();
+         if (low >= 0)
+            node->setIsNonNegative(true);
+         if (low <= 0)
+            node->setIsNonPositive(true);
+         }
+      if (constraint->asDoubleConst())
+         {
+         double low = constraint->asDoubleConst()->getLowDouble();
+         if (low >= 0)
+            node->setIsNonNegative(true);
+         if (low <= 0)
+            node->setIsNonPositive(true);
+         }
       if (constraint->asShortConst())
          {
          int16_t low = constraint->asShortConst()->getLowShort();
@@ -174,6 +190,44 @@ static void checkForNonNegativeAndOverflowProperties(OMR::ValuePropagation *vp, 
                   ((low > TR::getMinSigned<TR::Int64>()) || (high < TR::getMaxSigned<TR::Int64>()))) ||
                (node->getOpCode().isArithmetic() &&
                 (range->canOverflow() != TR_yes)))
+            {
+            node->setCannotOverflow(true);
+            //dumpOptDetails(vp->comp(), "Node %p cannot overflow\n", node);
+            }
+         }
+      else if (constraint->asFloatRange())
+         {
+         TR::VPFloatRange *range = constraint->asFloatRange();
+         float low = range->getLowFloat();
+         if (low >= 0)
+            node->setIsNonNegative(true);
+
+         float high = range->getHighFloat();
+         if (high <= 0)
+            node->setIsNonPositive(true);
+
+         if ((node->getOpCode().isLoad() &&
+               ((low > FLOAT_NEG_INFINITY) || (high < FLOAT_POS_INFINITY))) ||
+               (node->getOpCode().isArithmetic() && (range->canOverflow() != TR_yes)))
+            {
+            node->setCannotOverflow(true);
+            //dumpOptDetails(vp->comp(), "Node %p cannot overflow\n", node);
+            }
+         }
+      else if (constraint->asDoubleRange())
+         {
+         TR::VPDoubleRange *range = constraint->asDoubleRange();
+         double low = range->getLowDouble();
+         if (low >= 0)
+            node->setIsNonNegative(true);
+
+         double high = range->getHighDouble();
+         if (high <= 0)
+            node->setIsNonPositive(true);
+
+         if ((node->getOpCode().isLoad() &&
+               ((low > DOUBLE_NEG_INFINITY) || (high <DOUBLE_POS_INFINITY))) ||
+               (node->getOpCode().isArithmetic() && (range->canOverflow() != TR_yes)))
             {
             node->setCannotOverflow(true);
             //dumpOptDetails(vp->comp(), "Node %p cannot overflow\n", node);
@@ -842,9 +896,9 @@ TR::Node *constrainAConst(OMR::ValuePropagation *vp, TR::Node *node)
    return node;
    }
 
-static void constrainIntAndFloatConstHelper(OMR::ValuePropagation *vp, TR::Node *node, int32_t value, bool isGlobal)
+static void constrainIntConst(OMR::ValuePropagation *vp, TR::Node *node, bool isGlobal)
    {
-
+   int32_t value = node->getInt();
    if (value)
       {
       node->setIsNonZero(true);
@@ -863,22 +917,63 @@ static void constrainIntAndFloatConstHelper(OMR::ValuePropagation *vp, TR::Node 
    vp->addBlockOrGlobalConstraint(node, TR::VPIntConst::create(vp, value), isGlobal);
    }
 
-static void constrainIntConst(OMR::ValuePropagation *vp, TR::Node *node, bool isGlobal)
-   {
-   int32_t value = node->getInt();
-   constrainIntAndFloatConstHelper(vp, node, value, isGlobal);
-   }
-
 TR::Node *constrainIntConst(OMR::ValuePropagation *vp, TR::Node *node)
    {
    constrainIntConst(vp, node, true /* isGlobal */);
    return node;
    }
 
+TR::Node *constrainFloatConst(OMR::ValuePropagation *vp, TR::Node *node, bool isGlobal) 
+   {
+   float value = node->getFloat();
+   if (value)
+      {
+      node->setIsNonZero(true);
+      if (value < 0)
+         node->setIsNonPositive(true);
+      else
+         node->setIsNonNegative(true);
+      }
+   else
+      {
+      node->setIsZero(true);
+      node->setIsNonNegative(true);
+      node->setIsNonPositive(true);
+      }
+
+   vp->addBlockOrGlobalConstraint(node, TR::VPFloatConst::create(vp, value), isGlobal);
+   }
+
 TR::Node *constrainFloatConst(OMR::ValuePropagation *vp, TR::Node *node)
    {
-   int32_t value = node->getFloatBits();
-   constrainIntAndFloatConstHelper(vp, node, value, true /* isGlobal */);
+   constrainFloatConst(vp, node, true /* isGlobal */);
+   return node;
+   }
+
+TR::Node *constrainDoubleConst(OMR::ValuePropagation *vp, TR::Node *node, bool isGlobal) 
+   {
+   double value = node->getDouble();
+   if (value)
+      {
+      node->setIsNonZero(true);
+      if (value < 0)
+         node->setIsNonPositive(true);
+      else
+         node->setIsNonNegative(true);
+      }
+   else
+      {
+      node->setIsZero(true);
+      node->setIsNonNegative(true);
+      node->setIsNonPositive(true);
+      }
+
+   vp->addBlockOrGlobalConstraint(node, TR::VPDoubleConst::create(vp, value), isGlobal);
+   }
+
+TR::Node *constrainDoubleConst(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   constrainDoubleConst(vp, node, true /* isGlobal */);
    return node;
    }
 
@@ -5919,7 +6014,6 @@ TR::Node *constrainAdd(OMR::ValuePropagation *vp, TR::Node *node)
    if (findConstant(vp, node))
       return node;
 
-   bool longAdd = node->getOpCode().isLong();
    constrainChildren(vp, node);
 
    bool lhsGlobal, rhsGlobal;
@@ -5932,7 +6026,23 @@ TR::Node *constrainAdd(OMR::ValuePropagation *vp, TR::Node *node)
       constraint = lhs->add(rhs, node->getDataType(), vp);
       if (constraint)
          {
-         if (longAdd)
+         if (node->getOpCode().isFloat())
+            {
+            if (constraint->asFloatConst())
+               {
+               vp->replaceByConstant(node, constraint, lhsGlobal);
+               return node;
+               }
+            }
+         else if (node->getOpCode().isDouble())
+            {
+            if (constraint->asDoubleConst())
+               {
+               vp->replaceByConstant(node, constraint, lhsGlobal);
+               return node;
+               }
+            }
+         else if (node->getOpCode().isLong())
             {
             if (constraint->asLongConst())
                {
@@ -5947,16 +6057,22 @@ TR::Node *constrainAdd(OMR::ValuePropagation *vp, TR::Node *node)
                vp->replaceByConstant(node, constraint, lhsGlobal);
                return node;
                }
+
+            if (constraint->asShortConst())
+               {
+               vp->replaceByConstant(node, constraint, lhsGlobal);
+               return node;
+               }
             }
 
          bool didReduction = false;
-         if (longAdd)
+         if (node->getOpCode().isLong())
             didReduction = reduceLongOpToIntegerOp(vp, node, constraint);
 
-         vp->addBlockOrGlobalConstraint(node, constraint,lhsGlobal);
+         vp->addBlockOrGlobalConstraint(node, constraint, lhsGlobal);
          // If we reduced long to integer, node is now an i2l; not safe to do any further addition-related things with node
          if (didReduction)
-          return node;
+            return node;
          }
       }
 
@@ -5966,7 +6082,19 @@ TR::Node *constrainAdd(OMR::ValuePropagation *vp, TR::Node *node)
    if (rhs)
       {
       constraint = NULL;
-      if (rhs->asLongConst())
+      if (rhs->asFloatConst())
+         {
+         if (rhs->asFloatConst()->getFloat() > FLOAT_NEG_INFINITY &&
+             rhs->asFloatConst()->getFloat() < FLOAT_POS_INFINITY)
+            constraint = TR::VPEqual::create(vp, rhs->asFloatConst()->getFloat());
+         }
+      else if (rhs->asDoubleConst())
+         {
+         if (rhs->asDoubleConst()->getDouble() > FLOAT_NEG_INFINITY &&
+             rhs->asDoubleConst()->getDouble() < FLOAT_POS_INFINITY)
+            constraint = TR::VPEqual::create(vp, (float)rhs->asDoubleConst()->getDouble());
+         }
+      else if (rhs->asLongConst())
          {
          if (rhs->asLongConst()->getLong() > TR::getMinSigned<TR::Int32>() &&
              rhs->asLongConst()->getLong() < TR::getMaxSigned<TR::Int32>())
@@ -5985,6 +6113,13 @@ TR::Node *constrainAdd(OMR::ValuePropagation *vp, TR::Node *node)
              rhs->asIntConst()->getInt() < TR::getMaxSigned<TR::Int32>())
             constraint = TR::VPEqual::create(vp, rhs->asIntConst()->getInt());
          }
+      else if(rhs->asShortConst())
+         {
+         if (rhs->asShortConst()->getShort() > TR::getMinSigned<TR::Int16>() &&
+             rhs->asShortConst()->getShort() < TR::getMaxSigned<TR::Int16>())
+          constraint = TR::VPEqual::create(vp, rhs->asShortConst()->getShort());
+         }
+
       if (constraint)
          {
          if (rhsGlobal)
@@ -5994,7 +6129,7 @@ TR::Node *constrainAdd(OMR::ValuePropagation *vp, TR::Node *node)
          }
       }
 
-   if (longAdd)
+   if (node->getOpCode().isLong())
       {
       if (vp->isHighWordZero(node))
          node->setIsHighWordZero(true);
@@ -6010,7 +6145,6 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
    if (findConstant(vp, node))
       return node;
 
-   bool longSub = node->getOpCode().isLong();
    constrainChildren(vp, node);
 
    bool lhsGlobal, rhsGlobal;
@@ -6023,7 +6157,23 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
       constraint = lhs->subtract(rhs, node->getDataType(), vp);
       if (constraint)
          {
-         if (longSub)
+         if (node->getOpCode().isFloat())
+            {
+            if (constraint->asFloatConst())
+               {
+               vp->replaceByConstant(node, constraint, lhsGlobal);
+               return node;
+               }
+            }
+         else if (node->getOpCode().isDouble())
+            {
+            if (constraint->asDoubleConst())
+               {
+               vp->replaceByConstant(node, constraint, lhsGlobal);
+               return node;
+               }
+            }
+         else if (node->getOpCode().isLong())
             {
             if (constraint->asLongConst())
                {
@@ -6031,7 +6181,7 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
                return node;
                }
             }
-         else
+         else 
             {
             if (constraint->asIntConst())
                {
@@ -6041,19 +6191,19 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
 
             if (constraint->asShortConst())
                {
-               vp->replaceByConstant(node,constraint,lhsGlobal);
+               vp->replaceByConstant(node, constraint, lhsGlobal);
                return node;
                }
-
             }
 
          bool didReduction = false;
-         if (longSub)
-          didReduction = reduceLongOpToIntegerOp(vp, node, constraint);
-         vp->addBlockOrGlobalConstraint(node, constraint,lhsGlobal);
+         if (node->getOpCode().isLong())
+            didReduction = reduceLongOpToIntegerOp(vp, node, constraint);
+         
+         vp->addBlockOrGlobalConstraint(node, constraint, lhsGlobal);
          // If we reduced long to integer, node is now an i2l; not safe to do any further subtract-related things with node
          if (didReduction)
-          return node;
+            return node;
          }
       }
 
@@ -6063,7 +6213,19 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
    if (rhs)
       {
       constraint = NULL;
-      if (rhs->asLongConst())
+      if (rhs->asFloatConst())
+         {
+         if (rhs->asFloatConst()->getFloat() > FLOAT_NEG_INFINITY &&
+             rhs->asFloatConst()->getFloat() < FLOAT_POS_INFINITY)
+            constraint = TR::VPEqual::create(vp, -rhs->asFloatConst()->getFloat());
+         }
+      else if (rhs->asDoubleConst())
+         {
+         if (rhs->asDoubleConst()->getDouble() > FLOAT_NEG_INFINITY &&
+             rhs->asDoubleConst()->getDouble() < FLOAT_POS_INFINITY)
+            constraint = TR::VPEqual::create(vp, -(float)rhs->asDoubleConst()->getDouble());
+         }
+      else if (rhs->asLongConst())
          {
          if (rhs->asLongConst()->getLong() > TR::getMinSigned<TR::Int32>() &&
              rhs->asLongConst()->getLong() < TR::getMaxSigned<TR::Int32>())
@@ -6085,6 +6247,7 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
              rhs->asShortConst()->getShort() < TR::getMaxSigned<TR::Int16>())
           constraint = TR::VPEqual::create(vp, -rhs->asShortConst()->getShort());
          }
+
       if (constraint)
          {
          if (rhsGlobal)
@@ -6094,7 +6257,7 @@ TR::Node *constrainSubtract(OMR::ValuePropagation *vp, TR::Node *node)
          }
       }
 
-   if (longSub)
+   if (node->getOpCode().isLong())
       {
       if (vp->isHighWordZero(node))
          node->setIsHighWordZero(true);
@@ -6469,6 +6632,107 @@ TR::Node *constrainLmul(OMR::ValuePropagation *vp, TR::Node *node)
          }
       }
 
+   checkForNonNegativeAndOverflowProperties(vp, node);
+   return node;
+   }
+
+TR::Node *constrainFmul(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   if (findConstant(vp, node))
+      return node;
+
+   constrainChildren(vp, node);
+
+   bool lhsGlobal, rhsGlobal;
+   TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
+   TR::VPConstraint *rhs = vp->getConstraint(node->getSecondChild(), rhsGlobal);
+   lhsGlobal &= rhsGlobal;
+
+   if (lhs && rhs)
+      {
+      TR::VPConstraint *constraint = NULL;
+      if (lhs->asFloatConst() && rhs->asFloatConst())
+         {
+         constraint = TR::VPFloatConst::create(vp, TR::Compiler->arith.floatMultiplyFloat(lhs->asFloatConst()->getFloat(), rhs->asFloatConst()->getFloat()));
+         }
+      else
+         {
+         double lowerLowerLimit = TR::Compiler->arith.doubleMultiplyDouble((double)lhs->getLowFloat(), (double)rhs->getLowFloat());
+         double lowerUpperLimit = TR::Compiler->arith.doubleMultiplyDouble((double)lhs->getLowFloat(), (double)rhs->getHighFloat());
+         double upperLowerLimit = TR::Compiler->arith.doubleMultiplyDouble((double)lhs->getHighFloat(), (double)rhs->getLowFloat());
+         double upperUpperLimit = TR::Compiler->arith.doubleMultiplyDouble((double)lhs->getHighFloat(), (double)rhs->getHighFloat());
+         double lowest = std::min(std::min(lowerLowerLimit, lowerUpperLimit), std::min(upperLowerLimit, upperUpperLimit));
+         double highest = std::max(std::max(lowerLowerLimit, lowerUpperLimit), std::max(upperLowerLimit, upperUpperLimit));
+         
+         if (lowest < FLOAT_NEG_INFINITY || highest > FLOAT_POS_INFINITY)
+            {
+            constraint = NULL;
+            }
+         else
+            {
+            constraint = TR::VPFloatRange::create(vp, (float)lowest, (float)highest);
+            }
+         }
+
+      if (constraint)
+         {
+         if (constraint->asFloatConst())
+            {
+            vp->replaceByConstant(node, constraint, lhsGlobal);
+            return node;
+            }
+
+         vp->addBlockOrGlobalConstraint(node, constraint, lhsGlobal);
+         }
+      }
+
+   checkForNonNegativeAndOverflowProperties(vp, node);
+   return node;
+   }
+
+TR::Node *constrainDmul(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   if (findConstant(vp, node))
+      return node;
+
+   constrainChildren(vp, node);
+
+   bool lhsGlobal, rhsGlobal;
+   TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
+   TR::VPConstraint *rhs = vp->getConstraint(node->getSecondChild(), rhsGlobal);
+   lhsGlobal &= rhsGlobal;
+
+   if (lhs && rhs)
+      {
+      TR::VPConstraint *constraint = NULL;
+      if (lhs->asDoubleConst() && rhs->asDoubleConst())
+         {
+         constraint = TR::VPDoubleConst::create(vp, TR::Compiler->arith.doubleMultiplyDouble(lhs->asDoubleConst()->getDouble(), rhs->asDoubleConst()->getDouble()));
+         }
+      else
+         {
+         double lowerLowerLimit = TR::Compiler->arith.doubleMultiplyDouble(lhs->getLowDouble(), rhs->getLowDouble());
+         double lowerUpperLimit = TR::Compiler->arith.doubleMultiplyDouble(lhs->getLowDouble(), rhs->getHighDouble());
+         double upperLowerLimit = TR::Compiler->arith.doubleMultiplyDouble(lhs->getHighDouble(), rhs->getLowDouble());
+         double upperUpperLimit = TR::Compiler->arith.doubleMultiplyDouble(lhs->getHighDouble(), rhs->getHighDouble());
+         double lowest = std::min(std::min(lowerLowerLimit, lowerUpperLimit), std::min(upperLowerLimit, upperUpperLimit));
+         double highest = std::max(std::max(lowerLowerLimit, lowerUpperLimit), std::max(upperLowerLimit, upperUpperLimit));
+
+         constraint = TR::VPDoubleRange::create(vp, lowest, highest);
+         }
+
+      if (constraint)
+         {
+         if (constraint->asDoubleConst())
+            {
+            vp->replaceByConstant(node, constraint, lhsGlobal);
+            return node;
+            }
+
+         vp->addBlockOrGlobalConstraint(node, constraint, lhsGlobal);
+         }
+      }
+      
    checkForNonNegativeAndOverflowProperties(vp, node);
    return node;
    }
@@ -7126,6 +7390,67 @@ TR::Node *constrainLneg(OMR::ValuePropagation *vp, TR::Node *node)
    return node;
    }
 
+TR::Node *constrainFneg(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   if (findConstant(vp, node))
+      return node;
+   constrainChildren(vp, node);
+
+   bool isGlobal;
+   TR::VPConstraint *child = vp->getConstraint(node->getFirstChild(), isGlobal);
+   if (child)
+      {
+      if (child->asFloatConst())
+         {
+         TR::VPConstraint *constraint = TR::VPFloatConst::create(vp, TR::Compiler->arith.floatNegate(child->asFloatConst()->getFloat()));
+         vp->replaceByConstant(node, constraint, isGlobal);
+         }
+      else
+         {
+         float low = child->getLowFloat(), high = child->getHighFloat();
+         TR::VPConstraint *constraint = TR::VPFloatRange::create(vp, TR::Compiler->arith.floatNegate(high), TR::Compiler->arith.floatNegate(low), child->canOverflow());
+
+         if (constraint)
+            {
+            vp->addBlockOrGlobalConstraint(node, constraint ,isGlobal);
+            }
+         }
+      }
+
+   checkForNonNegativeAndOverflowProperties(vp, node);
+   return node;
+   }
+
+TR::Node *constrainDneg(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   if (findConstant(vp, node))
+      return node;
+   constrainChildren(vp, node);
+
+   bool isGlobal;
+   TR::VPConstraint *child = vp->getConstraint(node->getFirstChild(), isGlobal);
+
+   if (child)
+      {
+      if (child->asDoubleConst())
+         {
+         TR::VPConstraint *constraint = TR::VPDoubleConst::create(vp, TR::Compiler->arith.doubleNegate(child->asDoubleConst()->getDouble()));
+         vp->replaceByConstant(node, constraint, isGlobal);
+         }
+      else
+         {
+         double high = child->getHighDouble(), low = child->getLowDouble();
+         TR::VPConstraint *constraint = TR::VPDoubleRange::create(vp, TR::Compiler->arith.doubleNegate(high), TR::Compiler->arith.doubleNegate(low), child->canOverflow());
+
+         if (constraint)
+            vp->addBlockOrGlobalConstraint(node, constraint ,isGlobal);
+         }
+      }
+
+   checkForNonNegativeAndOverflowProperties(vp, node);
+   return node;
+   }
+
 TR::Node *constrainIabs(OMR::ValuePropagation *vp, TR::Node *node)
    {
    if (findConstant(vp, node))
@@ -7262,6 +7587,119 @@ TR::Node *constrainLabs(OMR::ValuePropagation *vp, TR::Node *node)
    return node;
    }
 
+TR::Node *constrainFabs(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   if (findConstant(vp, node))
+      return node;
+   constrainChildren(vp, node);
+
+   bool isGlobal;
+   TR::VPConstraint *child = vp->getConstraint(node->getFirstChild(), isGlobal);
+   if (child)
+      {
+      if (child->asFloatConst())
+         {
+         TR::VPConstraint *constraint = NULL;
+         if (child->asFloatConst()->getFloat() < 0)
+            constraint = TR::VPFloatConst::create(vp, TR::Compiler->arith.floatNegate(child->asFloatConst()->getFloat()));
+         else
+            constraint = TR::VPFloatConst::create(vp, child->asFloatConst()->getFloat());
+         vp->replaceByConstant(node, constraint, isGlobal);
+         }
+      else
+         {
+         float low = child->getLowFloat(), high = child->getHighFloat();
+
+         if (low < 0 && high <= 0)
+            {
+            float temp = TR::Compiler->arith.floatNegate(low);
+            low = TR::Compiler->arith.floatNegate(high);
+            high = temp;
+            }
+         else if (low < 0 && high > 0)
+            {
+            high = std::max(TR::Compiler->arith.floatNegate(low), high);
+            low = 0;
+            }
+         else if (performTransformation(vp->comp(),"%sRemoving %s [0x%p] as child %s [0x%p] is known to be positive\n", OPT_DETAILS,node->getOpCode().getName(), node, node->getFirstChild()->getOpCode().getName(), node->getFirstChild()))
+            {
+            // The range of values for the child is entirely positive, so remove the fabs
+            return vp->replaceNode(node, node->getFirstChild(), vp->_curTree);
+            }
+
+         if (low == high)
+            {
+            TR::VPConstraint *constraint = TR::VPFloatConst::create(vp, low);
+            vp->replaceByConstant(node, constraint, isGlobal);
+            }
+         else
+            {
+            TR::VPConstraint *constraint = TR::VPFloatRange::create(vp, low, high);
+            vp->addBlockOrGlobalConstraint(node, constraint, isGlobal);
+            }
+         }
+      }
+
+   checkForNonNegativeAndOverflowProperties(vp, node);
+   return node;
+   }
+
+TR::Node *constrainDabs(OMR::ValuePropagation *vp, TR::Node *node)
+   {
+   if (findConstant(vp, node))
+      return node;
+   constrainChildren(vp, node);
+
+   bool isGlobal;
+   TR::VPConstraint *child = vp->getConstraint(node->getFirstChild(), isGlobal);
+   if (child)
+      {
+      if (child->asDoubleConst())
+         {
+         TR::VPConstraint *constraint = NULL;
+         if (child->asDoubleConst()->getDouble() < 0)
+            constraint = TR::VPDoubleConst::create(vp, TR::Compiler->arith.doubleNegate(child->asDoubleConst()->getDouble()));
+         else
+            constraint = TR::VPDoubleConst::create(vp, child->asDoubleConst()->getDouble());
+         vp->replaceByConstant(node, constraint, isGlobal);
+         }
+      else
+         {
+         double low = child->getLowDouble(), high = child->getHighDouble();
+
+         if (low < 0 && high <= 0)
+            {
+            double temp = TR::Compiler->arith.doubleNegate(low);
+            low = TR::Compiler->arith.doubleNegate(high);
+            high = temp;
+            }
+         else if (low < 0 && high > 0)
+            {
+            high = std::max(TR::Compiler->arith.doubleNegate(low), high);
+            low = 0;
+            }
+         else if (performTransformation(vp->comp(),"%sRemoving %s [0x%p] as child %s [0x%p] is known to be positive\n", OPT_DETAILS,node->getOpCode().getName(), node, node->getFirstChild()->getOpCode().getName(), node->getFirstChild()))
+            {
+            // The range of values for the child is entirely positive, so remove the dabs
+            return vp->replaceNode(node, node->getFirstChild(), vp->_curTree);
+            }
+
+         if (low == high)
+            {
+            TR::VPConstraint *constraint = TR::VPDoubleConst::create(vp, low);
+            vp->replaceByConstant(node, constraint, isGlobal);
+            }
+         else
+            {
+            TR::VPConstraint *constraint = TR::VPDoubleRange::create(vp, low, high);
+            vp->addBlockOrGlobalConstraint(node, constraint, isGlobal);
+            }
+         }
+      }
+
+   checkForNonNegativeAndOverflowProperties(vp, node);
+   return node;
+   }
 
 TR::Node *constrainIshl(OMR::ValuePropagation *vp, TR::Node *node)
    {
