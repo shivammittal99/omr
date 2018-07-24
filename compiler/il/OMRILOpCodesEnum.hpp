@@ -171,6 +171,15 @@
    bxor,     // boolean xor of 2 bytes
    sxor,     // boolean xor of 2 short integers
 
+   fmuladd,    // scalar float fused multiply add                     (a * b) + c
+   fmulsub,    // scalar float fused multiply subtract                (a * b) - c
+   fnegmuladd, // scalar float fused negative multiply add          - (a * b) + c
+   fnegmulsub, // scalar float fused negative multiply subtract     - (a * b) - c
+   dmuladd,    // scalar double fused multiply add                    (a * b) + c
+   dmulsub,    // scalar double fused multiply subtract               (a * b) - c
+   dnegmuladd, // scalar double fused negative multiply add         - (a * b) + c
+   dnegmulsub, // scalar double fused negative multiply subtract    - (a * b) - c
+
    i2l,      // convert integer to long integer with sign extension
    i2f,      // convert integer to float
    i2d,      // convert integer to double

@@ -198,6 +198,175 @@ void OMR::X86::TreeEvaluator::insertPrecisionAdjustment(TR::Register      *reg,
    reg->resetMayNeedPrecisionAdjustment();
    }
 
+// Handles all scalar FMA IL opcodes (fmuladd, fmulsub, fnegmuladd, fnegmulsub, dmuladd, dmulsub, dnegmuladd, dnegmulsub)
+TR::Register *OMR::X86::TreeEvaluator::fmaEvaluator(TR::Node *node, TR::CodeGenerator *cg)
+   {
+   // of the form (firstChild * secondChild) + thirdChild.
+   // Appropriate form according to fmulsub, etc
+   TR::Node *firstChild = node->getChild(0);
+   TR::Node *secondChild = node->getChild(1);
+   TR::Node *thirdChild = node->getChild(2);
+
+   int preferredChildInTargetRegister = -1;
+   int preferredChildFromMemory = -1;
+
+   TR_X86OpCodes opcodeList[6][8] =
+     {{VFMADD132SSRegRegReg, VFMSUB132SSRegRegReg, VFNMADD132SSRegRegReg, VFNMSUB132SSRegRegReg, VFMADD132SDRegRegReg, VFMSUB132SDRegRegReg, VFNMADD132SDRegRegReg, VFNMSUB132SDRegRegReg},
+      {VFMADD132SSRegRegMem, VFMSUB132SSRegRegMem, VFNMADD132SSRegRegMem, VFNMSUB132SSRegRegMem, VFMADD132SDRegRegMem, VFMSUB132SDRegRegMem, VFNMADD132SDRegRegMem, VFNMSUB132SDRegRegMem},
+      {VFMADD213SSRegRegReg, VFMSUB213SSRegRegReg, VFNMADD213SSRegRegReg, VFNMSUB213SSRegRegReg, VFMADD213SDRegRegReg, VFMSUB213SDRegRegReg, VFNMADD213SDRegRegReg, VFNMSUB213SDRegRegReg},
+      {VFMADD213SSRegRegMem, VFMSUB213SSRegRegMem, VFNMADD213SSRegRegMem, VFNMSUB213SSRegRegMem, VFMADD213SDRegRegMem, VFMSUB213SDRegRegMem, VFNMADD213SDRegRegMem, VFNMSUB213SDRegRegMem},
+      {VFMADD231SSRegRegReg, VFMSUB231SSRegRegReg, VFNMADD231SSRegRegReg, VFNMSUB231SSRegRegReg, VFMADD231SDRegRegReg, VFMSUB231SDRegRegReg, VFNMADD231SDRegRegReg, VFNMSUB231SDRegRegReg},
+      {VFMADD231SSRegRegMem, VFMSUB231SSRegRegMem, VFNMADD231SSRegRegMem, VFNMSUB231SSRegRegMem, VFMADD231SDRegRegMem, VFMSUB231SDRegRegMem, VFNMADD231SDRegRegMem, VFNMSUB231SDRegRegMem}};
+
+   if (firstChild->getReferenceCount() == 1)
+      {
+      if (firstChild->getRegister() != NULL)
+         {
+         // firstChild => xmm1
+         preferredChildInTargetRegister = 0;
+         }
+      else if (firstChild->getOpCode().isLoadVar())
+         {
+         // firstChild => xmm3/m32/m64
+         preferredChildFromMemory = 0;
+         }
+      }
+
+   if (secondChild->getReferenceCount() == 1)
+      {
+      if (preferredChildInTargetRegister == -1 && secondChild->getRegister() != NULL)
+         {
+         // secondChild => xmm1
+         preferredChildInTargetRegister = 1;
+         }
+      else if (preferredChildFromMemory == -1 && secondChild->getOpCode().isLoadVar())
+         {
+         // secondChild => xmm3/m32/m64
+         preferredChildFromMemory = 1;
+         }
+      }
+
+   if (thirdChild->getReferenceCount() == 1)
+      {
+      if (preferredChildInTargetRegister == -1 && thirdChild->getRegister() != NULL)
+         {
+         // thirdChild => xmm1
+         preferredChildInTargetRegister = 2;
+         }
+      else if (preferredChildFromMemory == -1 && thirdChild->getOpCode().isLoadVar())
+         {
+         // thirdChild => xmm3/m32/64
+         preferredChildFromMemory = 2;
+         }
+      }
+
+   int opcodeVariant, source1Choice, source2Choice, source3Choice;
+
+   if (preferredChildFromMemory != -1 && preferredChildInTargetRegister != -1)
+      {
+      source1Choice = preferredChildInTargetRegister;
+      source2Choice = 3 - preferredChildFromMemory - preferredChildInTargetRegister;
+      source3Choice = preferredChildFromMemory;
+
+      if (preferredChildFromMemory == 2)
+         opcodeVariant = 3;
+      else if (preferredChildInTargetRegister == 2)
+         opcodeVariant = 5;
+      else
+         opcodeVariant = 1;
+      }
+   else if (preferredChildFromMemory != -1)
+      {
+      source3Choice = preferredChildFromMemory;
+
+      if (preferredChildFromMemory == 2)
+         {
+         opcodeVariant = 3;
+         source1Choice = 0;
+         source2Choice = 1;
+         }
+      else
+         {
+         opcodeVariant = 1;
+         source1Choice = 1 - preferredChildFromMemory;
+         source2Choice = 2;
+         }
+      }
+   else if (preferredChildInTargetRegister != -1)
+      {
+      source1Choice = preferredChildInTargetRegister;
+      if (preferredChildInTargetRegister == 2)
+         {
+         opcodeVariant = 4;
+         source2Choice = 0;
+         source3Choice = 1;
+         }
+      else
+         {
+         opcodeVariant = 0;
+         source2Choice = 2;
+         source3Choice = 1 - preferredChildInTargetRegister;
+         }
+      }
+   else
+      {
+      opcodeVariant = 0;
+      source1Choice = 0;
+      source2Choice = 2;
+      source3Choice = 1;
+      }
+
+   TR::ILOpCodes nodeOp = node->getOpCodeValue();
+
+   int ilVariant;
+
+   switch (nodeOp)
+      {
+      case TR::fmuladd:
+         ilVariant = 0;
+         break;
+      case TR::fmulsub:
+         ilVariant = 1;
+         break;
+      case TR::fnegmuladd:
+         ilVariant = 2;
+         break;
+      case TR::fnegmulsub:
+         ilVariant = 3;
+         break;
+      case TR::dmuladd:
+         ilVariant = 4;
+         break;
+      case TR::dmulsub:
+         ilVariant = 5;
+         break;
+      case TR::dnegmuladd:
+         ilVariant = 6;
+         break;
+      case TR::dnegmulsub:
+         ilVariant = 7;
+         break;
+      default:
+         TR_ASSERT_FATAL(false, "Unsupported OpCode in fmaEvaluator");
+      }
+
+   TR::Register *source1Register = cg->evaluate(node->getChild(source1Choice));
+   TR::Register *source2Register = cg->evaluate(node->getChild(source2Choice));
+
+   TR::Register *trgRegister = source1Register;
+
+   if (opcodeVariant % 2 == 0)
+      generateRegRegRegInstruction(opcodeList[opcodeVariant][ilVariant], node, trgRegister, source2Register, cg->evaluate(node->getChild(source3Choice)), cg);
+   else
+      generateRegRegMemInstruction(opcodeList[opcodeVariant][ilVariant], node, trgRegister, source2Register, generateX86MemoryReference(node->getChild(source3Choice), cg), cg);
+
+   node->setRegister(trgRegister);
+   cg->decReferenceCount(node->getChild(0));
+   cg->decReferenceCount(node->getChild(1));
+   cg->decReferenceCount(node->getChild(2));
+
+   return trgRegister;
+   }
 
 TR::Register *OMR::X86::TreeEvaluator::fconstEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {

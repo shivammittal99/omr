@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2017 IBM Corp. and others
+ * Copyright (c) 2000, 2018 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -165,6 +165,15 @@
    TR::TreeEvaluator::lxorEvaluator,        // TR::lxor
    TR::TreeEvaluator::ixorEvaluator,        // TR::bxor
    TR::TreeEvaluator::ixorEvaluator,        // TR::sxor
+
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::fmuladd
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::fmulsub
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::fnegmuladd
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::fnegmulsub
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::dmuladd
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::dmulsub
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::dnegmuladd
+   TR::TreeEvaluator::unImpOpEvaluator,     // TR::dnegmulsub
 
    TR::TreeEvaluator::b2lEvaluator,         // TR::i2l
    TR::TreeEvaluator::i2fEvaluator,         // TR::i2f

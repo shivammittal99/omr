@@ -148,6 +148,14 @@
    TR::TreeEvaluator::lxorEvaluator,                   // TR::lxor
    TR::TreeEvaluator::bxorEvaluator,                    // TR::bxor
    TR::TreeEvaluator::sxorEvaluator,                    // TR::sxor
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::fmuladd
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::fmulsub
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::fnegmuladd
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::fnegmulsub
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::dmuladd
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::dmulsub
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::dnegmuladd
+   TR::TreeEvaluator::fmaEvaluator,                     // TR::dnegmulsub
    TR::TreeEvaluator::i2lEvaluator,                    // TR::i2l
    TR::TreeEvaluator::i2fEvaluator,                     // TR::i2f
    TR::TreeEvaluator::i2dEvaluator,                     // TR::i2d

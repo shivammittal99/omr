@@ -434,6 +434,9 @@ class OMR_EXTENSIBLE CodeGenerator : public OMR::CodeGenerator
 
    bool supportsSinglePrecisionSQRT() {return true;}
 
+   bool supportsFusedMultiplyAdd() {return _targetProcessorInfo.supportsFMA() && _targetProcessorInfo.supportsAVX();}
+   bool supportsNegativeFusedMultiplyAdd() {return _targetProcessorInfo.supportsFMA() && _targetProcessorInfo.supportsAVX();}
+
    bool supportsComplexAddressing();
 
    bool getSupportsNewObjectAlignment() { return true; }

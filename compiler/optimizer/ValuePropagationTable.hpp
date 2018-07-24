@@ -289,6 +289,15 @@ const ValuePropagationPtr constraintHandlers[] =
    constrainChildren,        // TR::bxor
    constrainChildren,        // TR::sxor
 
+   constrainChildren,        // TR::fmaddul
+   constrainChildren,        // TR::fmulsub
+   constrainChildren,        // TR::fnegmuladd
+   constrainChildren,        // TR::fnegmulsub
+   constrainChildren,        // TR::dmuladd
+   constrainChildren,        // TR::dmulsub
+   constrainChildren,        // TR::dnegmuladd
+   constrainChildren,        // TR::dnegmulsub
+
    constrainI2l,             // TR::i2l
    constrainChildren,        // TR::i2f
    constrainChildren,        // TR::i2d
