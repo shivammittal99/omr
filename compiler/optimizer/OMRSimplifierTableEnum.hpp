@@ -149,14 +149,14 @@
    lxorSimplifier,          // TR::lxor
    bxorSimplifier,          // TR::bxor
    sxorSimplifier,          // TR::sxor
-   dftSimplifier,           // TR::fmuladd
-   dftSimplifier,           // TR::fmulsub
-   dftSimplifier,           // TR::fnegmuladd
-   dftSimplifier,           // TR::fnegmulsub
-   dftSimplifier,           // TR::dmuladd
-   dftSimplifier,           // TR::dmulsub
-   dftSimplifier,           // TR::dnegmuladd
-   dftSimplifier,           // TR::dnegmulsub
+   fmaSimplifier,           // TR::fmuladd
+   fmaSimplifier,           // TR::fmulsub
+   fmaSimplifier,           // TR::fnegmuladd
+   fmaSimplifier,           // TR::fnegmulsub
+   fmaSimplifier,           // TR::dmuladd
+   fmaSimplifier,           // TR::dmulsub
+   fmaSimplifier,           // TR::dnegmuladd
+   fmaSimplifier,           // TR::dnegmulsub
    i2lSimplifier,           // TR::i2l
    i2fSimplifier,           // TR::i2f
    i2dSimplifier,           // TR::i2d

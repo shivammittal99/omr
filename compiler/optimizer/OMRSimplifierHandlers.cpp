@@ -9905,7 +9905,7 @@ TR::Node *dnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 
          firstChild->setChild(0,newMul);
          newMul->setIsFPStrictCompliant(true);
-         }
+   }
       else if (firstChild->getOpCode().isMul() &&
           performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(A*B) -> -((A*B)-0)\n", s->optDetailString(), node))
          {
@@ -11649,6 +11649,160 @@ TR::Node *sxorSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 
    orderChildren(node, firstChild, secondChild, s);
    BINARY_IDENTITY_OP(ShortInt, 0)
+
+   return node;
+   }
+
+//--------------------------------------------------------------------
+// Fused Multiply Add
+//
+
+TR::Node *fmaSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   simplifyChildren(node, block, s);
+
+   TR::Node * firstChild = node->getChild(0), *secondChild = node->getChild(1), *thirdChild = node->getChild(2);
+
+   TR::ILOpCodes nodeOp = node->getOpCodeValue();
+
+   if(firstChild->getOpCode().isLoadConst() &&
+      secondChild->getOpCode().isLoadConst() &&
+      thirdChild->getOpCode().isLoadConst())
+      {
+      // d = (a * b) + c
+      bool aIsNan, bIsNan, cIsNan;
+      bool aIsInf, bIsInf, cIsPosInf, cIsNegInf;
+      bool aIsZero, bIsZero;
+      bool mulIsPositive;
+      bool dIsNan = false;
+
+      union
+         {
+         union 
+            {
+            int32_t bits;
+            float value;
+            } f;
+         union
+            {
+            int64_t bits;
+            double value;
+            } d;
+         } a, b, c, d;
+
+      if (node->getOpCode().isFloat()) 
+         {
+         a.f.value = firstChild->getFloat();
+         b.f.value = secondChild->getFloat();
+         c.f.value = thirdChild->getFloat();
+
+         aIsNan = ((a.f.bits & 0x7f800000) == 0x7f800000) && ((a.f.bits & 0x007fffff) != 0);
+         bIsNan = ((b.f.bits & 0x7f800000) == 0x7f800000) && ((b.f.bits & 0x007fffff) != 0);
+         cIsNan = ((c.f.bits & 0x7f800000) == 0x7f800000) && ((c.f.bits & 0x007fffff) != 0);
+         aIsInf = ((a.f.bits & 0x7fffffff) == 0x7f800000);
+         bIsInf = ((b.f.bits & 0x7fffffff) == 0x7f800000);
+         cIsPosInf = ((c.f.bits & 0xffffffff) == 0x7f800000);
+         cIsNegInf = ((c.f.bits & 0xffffffff) == 0xff800000);
+         aIsZero = (a.f.bits & 0x7fffffff) == 0;
+         bIsZero = (b.f.bits & 0x7fffffff) == 0;
+         mulIsPositive = ((a.f.bits & 0x80000000) ^ (b.f.bits & 0x80000000)) == 0;
+         }
+      else 
+         {
+         a.d.value = firstChild->getDouble();
+         b.d.value = secondChild->getDouble();
+         c.d.value = thirdChild->getDouble();
+
+         aIsNan = ((a.d.bits & 0x7ff0000000000000) == 0x7ff0000000000000) && ((a.d.bits & 0x000fffffffffffff) != 0);
+         bIsNan = ((b.d.bits & 0x7ff0000000000000) == 0x7ff0000000000000) && ((b.d.bits & 0x000fffffffffffff) != 0);
+         cIsNan = ((c.d.bits & 0x7ff0000000000000) == 0x7ff0000000000000) && ((c.d.bits & 0x000fffffffffffff) != 0);
+         aIsInf = ((a.d.bits & 0x7fffffffffffffff) == 0x7ff0000000000000);
+         bIsInf = ((b.d.bits & 0x7fffffffffffffff) == 0x7ff0000000000000);
+         cIsPosInf = (c.d.bits == 0x7ff0000000000000);
+         cIsNegInf = (c.d.bits == 0xfff0000000000000);
+         aIsZero = (a.d.bits & 0x7fffffffffffffff) == 0;
+         bIsZero = (b.d.bits & 0x7fffffffffffffff) == 0;
+         mulIsPositive = ((a.d.bits & 0x8000000000000000) ^ (b.d.bits & 0x8000000000000000) == 0);
+         }
+
+      if(aIsNan || bIsNan || cIsNan)
+         {
+         if(performTransformation(s->comp(), "%sFolded %s with any argument NaN on node [%p] to NaN\n", s->optDetailString(), node->getOpCode().getName(), node))
+            {
+            // result is NaN
+            dIsNan = true;
+            }
+         }
+      else if((aIsInf && bIsZero) || (aIsZero && bIsInf))
+         {
+         if(performTransformation(s->comp(), "%sFolded %s with (Inf*0)+c on node [%p] to NaN\n", s->optDetailString(), node->getOpCode().getName(), node))
+            {
+            // result is NaN
+            dIsNan = true;
+            }
+         }
+      else if((aIsInf && !bIsZero && !bIsNan) ||
+              (bIsInf && !aIsZero && !aIsNan))
+         {
+         // mul i.e (a*b) is either positive or negative infinity
+         if((mulIsPositive && cIsNegInf) || (!mulIsPositive && cIsPosInf))
+            {
+            if(performTransformation(s->comp(), "%sFolded %s with (Inf)+(-Inf) or (-Inf)+(Inf) on node [%p] to NaN\n", s->optDetailString(), node->getOpCode().getName(), node))
+               {
+               // result is NaN
+               dIsNan = true;
+               }
+            }
+         }
+
+      if (dIsNan)
+         {
+         if (node->getOpCode().isFloat())
+            d.f.bits = 0x7ff00000;
+         else
+            d.d.bits = 0x7ff8000000000000;
+         }
+      else
+         {
+         switch(nodeOp)
+            {
+            case TR::fmuladd:
+               d.f.value = TR::Compiler->arith.floatAddFloat(TR::Compiler->arith.floatMultiplyFloat(a.f.value, b.f.value), c.f.value);
+               break;
+            case TR::fmulsub:
+               d.f.value = TR::Compiler->arith.floatSubtractFloat(TR::Compiler->arith.floatMultiplyFloat(a.f.value, b.f.value), c.f.value);
+               break;
+            case TR::fnegmuladd:
+               d.f.value = TR::Compiler->arith.floatAddFloat(TR::Compiler->arith.floatNegate(TR::Compiler->arith.floatMultiplyFloat(a.f.value, b.f.value)), c.f.value);
+               break;
+            case TR::fnegmulsub:
+               d.f.value = TR::Compiler->arith.floatSubtractFloat(TR::Compiler->arith.floatNegate(TR::Compiler->arith.floatMultiplyFloat(a.f.value, b.f.value)), c.f.value);
+               break;
+            case TR::dmuladd:
+               d.d.value = TR::Compiler->arith.doubleAddDouble(TR::Compiler->arith.doubleMultiplyDouble(a.d.value, b.d.value), c.d.value);
+               break;
+            case TR::dmulsub:
+               d.d.value = TR::Compiler->arith.doubleSubtractDouble(TR::Compiler->arith.doubleMultiplyDouble(a.d.value, b.d.value), c.d.value);
+               break;
+            case TR::dnegmuladd:
+               d.d.value = TR::Compiler->arith.doubleAddDouble(TR::Compiler->arith.doubleNegate(TR::Compiler->arith.doubleMultiplyDouble(a.d.value, b.d.value)), c.d.value);
+               break;
+            case TR::dnegmulsub:
+               d.d.value = TR::Compiler->arith.doubleSubtractDouble(TR::Compiler->arith.doubleNegate(TR::Compiler->arith.doubleMultiplyDouble(a.d.value, b.d.value)), c.d.value);
+               break;
+            default:
+                TR_ASSERT(0,"unexpected opcode %d\n",node->getOpCodeValue());
+                return node;
+            }
+         }
+
+      if (node->getOpCode().isFloat())
+         foldFloatConstant(node, d.f.value, s);
+      else
+         foldDoubleConstant(node, d.d.value, s);
+      
+      return node;
+      }
 
    return node;
    }
