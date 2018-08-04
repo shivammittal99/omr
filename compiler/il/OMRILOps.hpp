@@ -1397,6 +1397,27 @@ public:
       return false;
       }
 
+   bool isMulAdd()
+      {
+      switch(getOpCodeValue())
+         {
+         case TR::fmuladd:
+         case TR::fmulsub:
+         case TR::fnegmuladd:
+         case TR::fnegmulsub:
+         case TR::dmuladd:
+         case TR::dmulsub:
+         case TR::dnegmuladd:
+         case TR::dnegmulsub:
+         case TR::vdmadd:
+         case TR::vdmsub:
+         case TR::vdnmsub:
+            return true;
+         default:
+            return false;
+         }
+      }
+
 
    template <typename T> static TR::ILOpCodes getConstOpCode();
    template <typename T> static TR::ILOpCodes getAddOpCode();

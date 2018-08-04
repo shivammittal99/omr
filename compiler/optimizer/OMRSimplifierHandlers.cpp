@@ -6760,6 +6760,68 @@ TR::Node *laddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    return node;
    }
 
+TR::Node *fpAddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   TR::Node *firstChild, *secondChild;
+   if (TR::Compiler->arith.permitsFusedMultiplyAdd())
+      {
+      firstChild = node->getFirstChild();
+      secondChild = node->getSecondChild();
+      if (s->cg()->supportsFusedMultiplyAdd() && firstChild->getOpCode().isMul())
+         {
+         if (performTransformation(s->comp(), "%sReduced [f/d]add with first child [f/d]mul in node [%s] to [f/d]muladd\n", s->optDetailString(), node->getName(s->getDebug())))
+            {
+            TR::Node *newNode;
+            if (node->getOpCode().isFloat())
+               newNode = TR::Node::create(node, TR::fmuladd, 3);
+            else
+               newNode = TR::Node::create(node, TR::dmuladd, 3);
+            newNode->setAndIncChild(2, secondChild);
+            newNode->setAndIncChild(1, firstChild->getSecondChild());
+            newNode->setAndIncChild(0, firstChild->getFirstChild());
+            node->recursivelyDecReferenceCount();
+            newNode->incReferenceCount();
+            s->_alteredBlock = true;
+            return newNode;
+            }
+         }
+      else if (firstChild->getOpCode().isMulAdd() &&
+               firstChild->getChild(2)->getOpCode().isLoadConst() && 
+               ((firstChild->getOpCode().isFloat() && firstChild->getChild(2)->getFloat() == 0.0) ||
+                (firstChild->getOpCode().isDouble() && firstChild->getChild(2)->getDouble() == 0.0)))
+         {
+         if (performTransformation(s->comp(), "%sReduced [f/d]add with first child fma(a, b, 0) in node [%s] to fma(a, b, c)\n", s->optDetailString(), node->getName(s->getDebug())))
+            {
+            TR::Node *newNode;
+            if (firstChild->getOpCodeValue() == TR::fmuladd || firstChild->getOpCodeValue() == TR::fmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::fmuladd, 3);
+               }
+            else if (firstChild->getOpCodeValue() == TR::dmuladd || firstChild->getOpCodeValue() == TR::dmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::dmuladd, 3);
+               }
+            else if (firstChild->getOpCodeValue() == TR::fnegmuladd || firstChild->getOpCodeValue() == TR::fnegmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::fnegmuladd, 3);
+               }
+            else if (firstChild->getOpCodeValue() == TR::dnegmuladd || firstChild->getOpCodeValue() == TR::dnegmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::dnegmuladd, 3);
+               }
+            newNode->setAndIncChild(0, firstChild->getChild(0));
+            newNode->setAndIncChild(1, firstChild->getChild(1));
+            newNode->setAndIncChild(2, secondChild);
+            node->recursivelyDecReferenceCount();
+            newNode->incReferenceCount();
+            s->_alteredBlock = true;
+            return newNode;
+            }
+         }
+      }
+   return node;
+   }
+
 TR::Node *faddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
@@ -6795,7 +6857,8 @@ TR::Node *faddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 
    if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
    if (isOperationFPCompliant(node, secondChild, s))secondChild->setIsFPStrictCompliant(true);
-   return node;
+
+   return fpAddSimplifier(node, block, s);
    }
 
 TR::Node *daddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -6828,7 +6891,8 @@ TR::Node *daddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 
    if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
    if (isOperationFPCompliant(node, secondChild, s))secondChild->setIsFPStrictCompliant(true);
-   return node;
+
+   return fpAddSimplifier(node, block, s);
    }
 
 TR::Node *baddSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -7855,6 +7919,69 @@ TR::Node *lsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    return node;
    }
 
+TR::Node *fpSubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   TR::Node *firstChild, *secondChild;
+
+   if (TR::Compiler->arith.permitsFusedMultiplyAdd())
+      {
+      firstChild = node->getFirstChild();
+      secondChild = node->getSecondChild();
+      if (s->cg()->supportsFusedMultiplyAdd() && firstChild->getOpCode().isMul())
+         {
+         if (performTransformation(s->comp(), "%sReduced [f/d]sub with first child [f/d]mul in node [%s] to [f/d]mulsub\n", s->optDetailString(), node->getName(s->getDebug())))
+            {
+            TR::Node *newNode;
+            if (node->getOpCode().isFloat())
+               newNode = TR::Node::create(node, TR::fmulsub, 3);
+            else
+               newNode = TR::Node::create(node, TR::dmulsub, 3);
+            newNode->setAndIncChild(2, secondChild);
+            newNode->setAndIncChild(1, firstChild->getSecondChild());
+            newNode->setAndIncChild(0, firstChild->getFirstChild());
+            node->recursivelyDecReferenceCount();
+            newNode->incReferenceCount();
+            s->_alteredBlock = true;
+            return newNode;
+            }
+         }
+      else if (firstChild->getOpCode().isMulAdd() &&
+               firstChild->getChild(2)->getOpCode().isLoadConst() && 
+               ((firstChild->getOpCode().isFloat() && firstChild->getChild(2)->getFloat() == 0.0) ||
+                (firstChild->getOpCode().isDouble() && firstChild->getChild(2)->getDouble() == 0.0)))
+         {
+         if (performTransformation(s->comp(), "%sReduced [f/d]sub with first child fma(a, b, 0) in node [%s] to fma(a, b, c)\n", s->optDetailString(), node->getName(s->getDebug())))
+            {
+            TR::Node *newNode;
+            if (firstChild->getOpCodeValue() == TR::fmuladd || firstChild->getOpCodeValue() == TR::fmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::fmulsub, 3);
+               }
+            else if (firstChild->getOpCodeValue() == TR::dmuladd || firstChild->getOpCodeValue() == TR::dmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::dmulsub, 3);
+               }
+            else if (firstChild->getOpCodeValue() == TR::fnegmuladd || firstChild->getOpCodeValue() == TR::fnegmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::fnegmulsub, 3);
+               }
+            else if (firstChild->getOpCodeValue() == TR::dnegmuladd || firstChild->getOpCodeValue() == TR::dnegmulsub)
+               {
+               newNode = TR::Node::create(firstChild, TR::dnegmulsub, 3);
+               }
+            newNode->setAndIncChild(0, firstChild->getChild(0));
+            newNode->setAndIncChild(1, firstChild->getChild(1));
+            newNode->setAndIncChild(2, secondChild);
+            node->recursivelyDecReferenceCount();
+            newNode->incReferenceCount();
+            s->_alteredBlock = true;
+            return newNode;
+            }
+         }
+      }
+   return node;
+   }
+
 TR::Node *fsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
@@ -7889,7 +8016,7 @@ TR::Node *fsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    if (isOperationFPCompliant(node,firstChild, s)) firstChild->setIsFPStrictCompliant(true);
    if (isOperationFPCompliant(node,secondChild, s))secondChild->setIsFPStrictCompliant(true);
 
-   return node;
+   return fpSubSimplifier(node, block, s);
    }
 
 TR::Node *dsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -7920,7 +8047,8 @@ TR::Node *dsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
 
    if (isOperationFPCompliant(node, firstChild, s)) firstChild->setIsFPStrictCompliant(true);
    if (isOperationFPCompliant(node, secondChild, s))secondChild->setIsFPStrictCompliant(true);
-   return node;
+
+   return fpSubSimplifier(node, block, s);
    }
 
 TR::Node *bsubSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -9790,6 +9918,129 @@ TR::Node *lnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    return node;
    }
 
+TR::Node *fpNegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
+   {
+   TR::Node *firstChild;
+
+   if (TR::Compiler->arith.permitsFusedMultiplyAdd() && s->cg()->supportsNegativeFusedMultiplyAdd())
+      {
+      firstChild = node->getFirstChild();
+      if (firstChild->getOpCode().isMulAdd() &&
+          performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] neg of fma\n", s->optDetailString(), node))
+         {
+         switch(firstChild->getOpCodeValue())
+            {
+            case TR::fmuladd:
+               TR::Node::recreate(firstChild, TR::fnegmulsub);
+               break;
+            case TR::fmulsub:
+               TR::Node::recreate(firstChild, TR::fnegmuladd);
+               break;
+            case TR::fnegmuladd:
+               TR::Node::recreate(firstChild, TR::fmulsub);
+               break;
+            case TR::fnegmulsub:
+               TR::Node::recreate(firstChild, TR::fmuladd);
+               break;
+            case TR::dmuladd:
+               TR::Node::recreate(firstChild, TR::dnegmulsub);
+               break;
+            case TR::dmulsub:
+               TR::Node::recreate(firstChild, TR::dnegmuladd);
+               break;
+            case TR::dnegmuladd:
+               TR::Node::recreate(firstChild, TR::dmulsub);
+               break;
+            case TR::dnegmulsub:
+               TR::Node::recreate(firstChild, TR::dmuladd);
+               break;
+            default:
+                return node;
+            }
+         node = s->replaceNode(node, firstChild, s->_curTree);
+         s->_alteredBlock = true;
+         return node;
+         }
+      else if (firstChild->getOpCode().isAdd() &&
+               performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(a+c) -> -((a*1)+c) -> [f/d]negmulsub\n", s->optDetailString(), node))
+         {
+         TR::Node *newNode, *newConst;
+         if(node->getOpCode().isFloat())
+            {
+            newNode = TR::Node::create(node, TR::fnegmulsub, 3);
+            newConst = TR::Node::create(newNode, TR::fconst, 0);
+            newConst->setFloat(1.0);
+            }
+         else
+            {
+            newNode = TR::Node::create(node, TR::dnegmulsub, 3);
+            newConst = TR::Node::create(newNode, TR::dconst, 0);
+            newConst->setDouble(1.0);
+            }
+
+         newNode->setAndIncChild(2, firstChild->getSecondChild());
+         newNode->setAndIncChild(1, newConst);
+         newNode->setAndIncChild(0, firstChild->getFirstChild());
+         node->recursivelyDecReferenceCount();
+         newNode->incReferenceCount();
+         s->_alteredBlock = true;
+         return newNode;
+         }
+      else if (firstChild->getOpCode().isSub() &&
+               performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(a-c) -> -((a*1)-c) -> [f/d]negmuladd\n", s->optDetailString(), node))
+         {
+         TR::Node *newNode, *newConst;
+         if(node->getOpCode().isFloat())
+            {
+            newNode = TR::Node::create(node, TR::fnegmuladd, 3);
+            newConst = TR::Node::create(newNode, TR::fconst, 0);
+            newConst->setFloat(1.0);
+            }
+         else
+            {
+            newNode = TR::Node::create(node, TR::dnegmuladd, 3);
+            newConst = TR::Node::create(newNode, TR::dconst, 0);
+            newConst->setDouble(1.0);
+            }
+         
+         newNode->setAndIncChild(2, firstChild->getSecondChild());
+         newNode->setAndIncChild(1, newConst);
+         newNode->setAndIncChild(0, firstChild->getFirstChild());
+         node->recursivelyDecReferenceCount();
+         newNode->incReferenceCount();
+         s->_alteredBlock = true;
+         return newNode;
+         }
+      else if (firstChild->getOpCode().isMul() &&
+               performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(a*b) -> -((a*b)-0) -> [f/d]negmuladd\n", s->optDetailString(), node))
+         {
+         TR::Node *newNode, *newConst;
+         if(node->getOpCode().isFloat())
+            {
+            newNode = TR::Node::create(node, TR::fnegmuladd, 3);
+            newConst = TR::Node::create(newNode, TR::fconst, 0);
+            newConst->setFloat(0.0);
+            }
+         else
+            {
+            newNode = TR::Node::create(node, TR::dnegmuladd, 3);
+            newConst = TR::Node::create(newNode, TR::dconst, 0);
+            newConst->setDouble(0.0);
+            }
+
+         newNode->setAndIncChild(2, newConst);
+         newNode->setAndIncChild(1, firstChild->getSecondChild());
+         newNode->setAndIncChild(0, firstChild->getFirstChild());
+         node->recursivelyDecReferenceCount();
+         newNode->incReferenceCount();
+         s->_alteredBlock = true;
+         return newNode;
+         }
+      }
+
+   return node;
+   }
+
 TR::Node *fnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
    {
    simplifyChildren(node, block, s);
@@ -9843,37 +10094,8 @@ TR::Node *fnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
         node= s->replaceNode(node,node->getFirstChild(), s->_curTree);
         }
    }
-   else if (s->comp()->cg()->supportsNegativeFusedMultiplyAdd())
-      {
-      // unless we've already got an inserted multiply, transformit
-      if ((firstChild->getOpCode().isAdd() || firstChild->getOpCode().isSub()) &&
-          !(firstChild->getFirstChild()->isFPStrictCompliant() || firstChild->getSecondChild()->isFPStrictCompliant()) &&
-          performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(-A +/- B) -> -((A*1)+/-B)\n", s->optDetailString(), node))
-         {
-         TR::Node * newConst = TR::Node::create(firstChild, TR::fconst, 0);
-         newConst->setFloat(1);
-         TR::Node * newMul = TR::Node::create(firstChild,TR::fmul, 2);
-         newMul->setAndIncChild(0, firstChild->getFirstChild());
-         newMul->setAndIncChild(1, newConst);
-         s->replaceNode(firstChild->getFirstChild(),newMul, s->_curTree);
-         firstChild->setChild(0,newMul);
-         newMul->setIsFPStrictCompliant(true);
-         }
-      else if (firstChild->getOpCode().isMul() &&
-          performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(A*B) -> -((A*B)-0)\n", s->optDetailString(), node))
-         {
-         TR::Node * newConst = TR::Node::create(firstChild, TR::fconst, 0);
-         newConst->setFloat(0);
-         TR::Node * newAdd = TR::Node::create(firstChild,TR::fsub, 2);
-         newAdd->setAndIncChild(0, firstChild);
-         newAdd->setAndIncChild(1, newConst);
-         s->replaceNode(firstChild,newAdd, s->_curTree);
-         node->setChild(0,newAdd);
-         firstChild->setIsFPStrictCompliant(true);
-         }
-      }
 
-   return node;
+   return fpNegSimplifier(node, block, s);
    }
 
 TR::Node *dnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
@@ -9888,39 +10110,7 @@ TR::Node *dnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
       return node;
       }
 
-   // Make this work for -(0-0)
-
-   if (s->comp()->cg()->supportsNegativeFusedMultiplyAdd())
-      {
-      if ((firstChild->getOpCode().isAdd() || firstChild->getOpCode().isSub()) &&
-     !(firstChild->getFirstChild()->isFPStrictCompliant() || firstChild->getSecondChild()->isFPStrictCompliant()) &&
-          performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(-A +/- B) -> -((A*1)+/-B)\n", s->optDetailString(), node))
-         {
-         TR::Node * newConst = TR::Node::create(firstChild->getFirstChild(), TR::dconst, 0);
-         TR::Node * newMul = TR::Node::create(firstChild, TR::dmul, 2);
-         newConst->setDouble(1);
-         newMul->setAndIncChild(1, newConst);
-         newMul->setAndIncChild(0, firstChild->getFirstChild());
-         s->replaceNode(firstChild->getFirstChild(),newMul, s->_curTree);
-
-         firstChild->setChild(0,newMul);
-         newMul->setIsFPStrictCompliant(true);
-   }
-      else if (firstChild->getOpCode().isMul() &&
-          performTransformation(s->comp(), "%sTransforming [" POINTER_PRINTF_FORMAT "] -(A*B) -> -((A*B)-0)\n", s->optDetailString(), node))
-         {
-         TR::Node * newConst = TR::Node::create(firstChild, TR::dconst, 0);
-         TR::Node * newAdd = TR::Node::create(firstChild, TR::dsub, 2);
-         newConst->setDouble(0);
-         newAdd->setAndIncChild(0, firstChild);
-         newAdd->setAndIncChild(1, newConst);
-         s->replaceNode(firstChild,newAdd, s->_curTree);
-         node->setChild(0,newAdd);
-         firstChild->setIsFPStrictCompliant(true);
-         }
-      }
-
-   return node;
+   return fpNegSimplifier(node, block, s);
    }
 
 TR::Node *bnegSimplifier(TR::Node * node, TR::Block * block, TR::Simplifier * s)
