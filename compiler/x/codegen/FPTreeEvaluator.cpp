@@ -201,42 +201,20 @@ void OMR::X86::TreeEvaluator::insertPrecisionAdjustment(TR::Register      *reg,
 
 TR::Register *OMR::X86::TreeEvaluator::fconstEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {
-   TR::Register *targetRegister;
-   if (cg->useSSEForSinglePrecision())
-      {
-      targetRegister = cg->allocateSinglePrecisionRegister(TR_FPR);
+   TR::Register *targetRegister = cg->allocateSinglePrecisionRegister(TR_FPR);
 
-      if (node->getFloatBits() == 0)
-         {
-         generateRegRegInstruction(XORPSRegReg, node, targetRegister, targetRegister, cg);
-         }
-      else
-         {
-         TR::IA32ConstantDataSnippet *cds = cg->findOrCreate4ByteConstant(node, node->getFloatBits());
-         TR::MemoryReference  *tempMR = generateX86MemoryReference(cds, cg);
-         TR::Instruction *instr = generateRegMemInstruction(MOVSSRegMem, node, targetRegister, tempMR, cg);
-         setDiscardableIfPossible(TR_RematerializableFloat, targetRegister, node, instr, (intptrj_t)node->getFloatBits(), cg);
-         }
+   if (node->getFloatBits() == 0)
+      {
+      generateRegRegInstruction(XORPSRegReg, node, targetRegister, targetRegister, cg);
       }
    else
       {
-      targetRegister = cg->allocateSinglePrecisionRegister(TR_X87);
-
-      if (node->getFloatBits() == FLOAT_POS_ZERO)
-         {
-         generateFPRegInstruction(FLD0Reg, node, targetRegister, cg);
-         }
-      else if (node->getFloatBits() == FLOAT_ONE)
-         {
-         generateFPRegInstruction(FLD1Reg, node, targetRegister, cg);
-         }
-      else
-         {
-         TR::IA32ConstantDataSnippet *cds = cg->findOrCreate4ByteConstant(node, node->getFloatBits());
-         TR::MemoryReference  *tempMR = generateX86MemoryReference(cds, cg);
-         generateFPRegMemInstruction(FLDRegMem, node, targetRegister, tempMR, cg);
-         }
+      TR::IA32ConstantDataSnippet *cds = cg->findOrCreate4ByteConstant(node, node->getFloatBits());
+      TR::MemoryReference  *tempMR = generateX86MemoryReference(cds, cg);
+      TR::Instruction *instr = generateRegMemInstruction(MOVSSRegMem, node, targetRegister, tempMR, cg);
+      setDiscardableIfPossible(TR_RematerializableFloat, targetRegister, node, instr, (intptrj_t)node->getFloatBits(), cg);
       }
+
    node->setRegister(targetRegister);
    return targetRegister;
    }
@@ -244,41 +222,19 @@ TR::Register *OMR::X86::TreeEvaluator::fconstEvaluator(TR::Node *node, TR::CodeG
 
 TR::Register *OMR::X86::TreeEvaluator::dconstEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {
-   TR::Register *targetRegister;
-   if (cg->useSSEForDoublePrecision())
-      {
-      targetRegister = cg->allocateRegister(TR_FPR);
+   TR::Register *targetRegister = cg->allocateRegister(TR_FPR);
 
-      if (node->getLongInt() == 0)
-         {
-         generateRegRegInstruction(XORPDRegReg, node, targetRegister, targetRegister, cg);
-         }
-      else
-         {
-         TR::IA32ConstantDataSnippet *cds = cg->findOrCreate8ByteConstant(node, node->getLongInt());
-         TR::MemoryReference  *tempMR = generateX86MemoryReference(cds, cg);
-         generateRegMemInstruction(cg->getXMMDoubleLoadOpCode(), node, targetRegister, tempMR, cg);
-         }
+   if (node->getLongInt() == 0)
+      {
+      generateRegRegInstruction(XORPDRegReg, node, targetRegister, targetRegister, cg);
       }
    else
       {
-      targetRegister = cg->allocateRegister(TR_X87);
-
-      if (node->getLongInt() == 0) // hex for ieee double +0.0
-         {
-         generateFPRegInstruction(DLD0Reg, node, targetRegister, cg);
-         }
-      else if (node->getLongInt() == IEEE_DOUBLE_1_0) // hex for ieee double 1.0
-         {
-         generateFPRegInstruction(DLD1Reg, node, targetRegister, cg);
-         }
-      else
-         {
-         TR::IA32ConstantDataSnippet *cds = cg->findOrCreate8ByteConstant(node, node->getLongInt());
-         TR::MemoryReference  *tempMR = generateX86MemoryReference(cds, cg);
-         generateFPRegMemInstruction(DLDRegMem, node, targetRegister, tempMR, cg);
-         }
+      TR::IA32ConstantDataSnippet *cds = cg->findOrCreate8ByteConstant(node, node->getLongInt());
+      TR::MemoryReference  *tempMR = generateX86MemoryReference(cds, cg);
+      generateRegMemInstruction(cg->getXMMDoubleLoadOpCode(), node, targetRegister, tempMR, cg);
       }
+
    node->setRegister(targetRegister);
    return targetRegister;
    }
