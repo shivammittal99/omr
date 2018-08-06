@@ -243,36 +243,30 @@ TR::Register *OMR::X86::TreeEvaluator::performFload(TR::Node *node, TR::MemoryRe
    {
    TR::Register    *targetRegister;
    TR::Instruction *instr;
-   if (cg->useSSEForSinglePrecision())
-      {
-      if (TR::Compiler->target.is64Bit() &&
-          sourceMR->getSymbolReference().isUnresolved())
-         {
-         // The 64-bit mode XMM load instructions may be wider than 8-bytes (our patching
-         // window) but we won't know that for sure until after register assignment.
-         // Hence, the unresolved memory reference must be evaluated into a register
-         // first.
-         //
-         TR::Register *memReg = cg->allocateRegister(TR_GPR);
-         generateRegMemInstruction(LEA8RegMem, node, memReg, sourceMR, cg);
-         sourceMR = generateX86MemoryReference(memReg, 0, cg);
-         cg->stopUsingRegister(memReg);
 
-         targetRegister = cg->allocateSinglePrecisionRegister(TR_FPR);
-         instr = generateRegMemInstruction(MOVSSRegMem, node, targetRegister, sourceMR, cg);
-         }
-      else
-         {
-         targetRegister = cg->allocateSinglePrecisionRegister(TR_FPR);
-         instr = generateRegMemInstruction(MOVSSRegMem, node, targetRegister, sourceMR, cg);
-         setDiscardableIfPossible(TR_RematerializableFloat, targetRegister, node, instr, sourceMR, cg);
-         }
+   if (TR::Compiler->target.is64Bit() &&
+         sourceMR->getSymbolReference().isUnresolved())
+      {
+      // The 64-bit mode XMM load instructions may be wider than 8-bytes (our patching
+      // window) but we won't know that for sure until after register assignment.
+      // Hence, the unresolved memory reference must be evaluated into a register
+      // first.
+      //
+      TR::Register *memReg = cg->allocateRegister(TR_GPR);
+      generateRegMemInstruction(LEA8RegMem, node, memReg, sourceMR, cg);
+      sourceMR = generateX86MemoryReference(memReg, 0, cg);
+      cg->stopUsingRegister(memReg);
+
+      targetRegister = cg->allocateSinglePrecisionRegister(TR_FPR);
+      instr = generateRegMemInstruction(MOVSSRegMem, node, targetRegister, sourceMR, cg);
       }
    else
       {
-      targetRegister = cg->allocateSinglePrecisionRegister(TR_X87);
-      instr = generateFPRegMemInstruction(FLDRegMem, node, targetRegister, sourceMR, cg);
+      targetRegister = cg->allocateSinglePrecisionRegister(TR_FPR);
+      instr = generateRegMemInstruction(MOVSSRegMem, node, targetRegister, sourceMR, cg);
+      setDiscardableIfPossible(TR_RematerializableFloat, targetRegister, node, instr, sourceMR, cg);
       }
+      
    if (node->getOpCode().isIndirect())
       cg->setImplicitExceptionPoint(instr);
    node->setRegister(targetRegister);
@@ -292,30 +286,24 @@ TR::Register *OMR::X86::TreeEvaluator::performDload(TR::Node *node, TR::MemoryRe
    {
    TR::Register    *targetRegister;
    TR::Instruction *instr;
-   if (cg->useSSEForDoublePrecision())
+   
+   if (TR::Compiler->target.is64Bit() &&
+         sourceMR->getSymbolReference().isUnresolved())
       {
-      if (TR::Compiler->target.is64Bit() &&
-          sourceMR->getSymbolReference().isUnresolved())
-         {
-         // The 64-bit load instructions may be wider than 8-bytes (our patching
-         // window) but we won't know that for sure until after register assignment.
-         // Hence, the unresolved memory reference must be evaluated into a register
-         // first.
-         //
-         TR::Register *memReg = cg->allocateRegister(TR_GPR);
-         generateRegMemInstruction(LEA8RegMem, node, memReg, sourceMR, cg);
-         sourceMR = generateX86MemoryReference(memReg, 0, cg);
-         cg->stopUsingRegister(memReg);
-         }
+      // The 64-bit load instructions may be wider than 8-bytes (our patching
+      // window) but we won't know that for sure until after register assignment.
+      // Hence, the unresolved memory reference must be evaluated into a register
+      // first.
+      //
+      TR::Register *memReg = cg->allocateRegister(TR_GPR);
+      generateRegMemInstruction(LEA8RegMem, node, memReg, sourceMR, cg);
+      sourceMR = generateX86MemoryReference(memReg, 0, cg);
+      cg->stopUsingRegister(memReg);
+      }
 
-      targetRegister = cg->allocateRegister(TR_FPR);
-      instr = generateRegMemInstruction(cg->getXMMDoubleLoadOpCode(), node, targetRegister, sourceMR, cg);
-      }
-   else
-      {
-      targetRegister = cg->allocateRegister(TR_X87);
-      instr = generateFPRegMemInstruction(DLDRegMem, node, targetRegister, sourceMR, cg);
-      }
+   targetRegister = cg->allocateRegister(TR_FPR);
+   instr = generateRegMemInstruction(cg->getXMMDoubleLoadOpCode(), node, targetRegister, sourceMR, cg);
+      
    if (node->getOpCode().isIndirect())
       cg->setImplicitExceptionPoint(instr);
    node->setRegister(targetRegister);
