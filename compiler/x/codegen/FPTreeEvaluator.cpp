@@ -789,64 +789,44 @@ TR::Register *OMR::X86::TreeEvaluator::i2fEvaluator(TR::Node *node, TR::CodeGene
    {
    TR::Node                *child = node->getFirstChild();
    TR::Register            *target;
-   TR::MemoryReference  *tempMR;
+   TR::MemoryReference     *tempMR;
 
    if (child->getRegister() == NULL &&
        child->getReferenceCount() == 1 &&
        child->getOpCode().isLoadVar())
       {
       tempMR = generateX86MemoryReference(child, cg);
-      if (cg->useSSEForSinglePrecision())
-         {
-         target = cg->allocateSinglePrecisionRegister(TR_FPR);
-         generateRegMemInstruction(CVTSI2SSRegMem, node, target, tempMR, cg);
-         }
-      else
-         {
-         target = cg->allocateSinglePrecisionRegister(TR_X87);
-         generateFPRegMemInstruction(FILDRegMem, node, target, tempMR, cg);
-         target->setMayNeedPrecisionAdjustment();
-         target->setNeedsPrecisionAdjustment();
-         }
+      target = cg->allocateSinglePrecisionRegister(TR_FPR);
+      generateRegMemInstruction(CVTSI2SSRegMem, node, target, tempMR, cg);
       tempMR->decNodeReferenceCounts(cg);
       }
    else
       {
       TR::Register *intReg = cg->evaluate(child);
-      if (cg->useSSEForSinglePrecision())
+
+      switch (node->getOpCodeValue())
          {
-         switch (node->getOpCodeValue())
-            {
-            case TR::b2f:
-               generateRegRegInstruction(MOVSXReg4Reg1, node, intReg, intReg, cg);
-               break;
-            case TR::bu2f:
-               generateRegRegInstruction(MOVZXReg4Reg1, node, intReg, intReg, cg);
-               break;
-            case TR::s2f:
-               generateRegRegInstruction(MOVSXReg4Reg2, node, intReg, intReg, cg);
-               break;
-            case TR::su2f:
-               generateRegRegInstruction(MOVZXReg4Reg2, node, intReg, intReg, cg);
-               break;
-            case TR::i2f:
-               break;
-            default:
-               TR_ASSERT(0, "INVALID OP CODE");
-               break;
-            }
-         target = cg->allocateSinglePrecisionRegister(TR_FPR);
-         generateRegRegInstruction(CVTSI2SSRegReg4, node, target, intReg, cg);
+         case TR::b2f:
+            generateRegRegInstruction(MOVSXReg4Reg1, node, intReg, intReg, cg);
+            break;
+         case TR::bu2f:
+            generateRegRegInstruction(MOVZXReg4Reg1, node, intReg, intReg, cg);
+            break;
+         case TR::s2f:
+            generateRegRegInstruction(MOVSXReg4Reg2, node, intReg, intReg, cg);
+            break;
+         case TR::su2f:
+            generateRegRegInstruction(MOVZXReg4Reg2, node, intReg, intReg, cg);
+            break;
+         case TR::i2f:
+            break;
+         default:
+            TR_ASSERT(0, "INVALID OP CODE");
+            break;
          }
-      else
-         {
-         target = cg->allocateSinglePrecisionRegister(TR_X87);
-         tempMR = generateX86MemoryReference(cg->allocateLocalTemp(), cg);
-         generateMemRegInstruction(S4MemReg, node, tempMR, intReg, cg);
-         generateFPRegMemInstruction(FILDRegMem, node, target, generateX86MemoryReference(*tempMR, 0, cg), cg);
-         target->setMayNeedPrecisionAdjustment();
-         target->setNeedsPrecisionAdjustment();
-         }
+      target = cg->allocateSinglePrecisionRegister(TR_FPR);
+      generateRegRegInstruction(CVTSI2SSRegReg4, node, target, intReg, cg);
+
       cg->decReferenceCount(child);
       }
 
@@ -859,58 +839,42 @@ TR::Register *OMR::X86::TreeEvaluator::i2dEvaluator(TR::Node *node, TR::CodeGene
    {
    TR::Node                *child  = node->getFirstChild();
    TR::Register            *target;
-   TR::MemoryReference  *tempMR;
+   TR::MemoryReference     *tempMR;
 
    if (child->getRegister() == NULL && child->getReferenceCount() == 1 && child->getOpCode().isLoadVar())
       {
       tempMR = generateX86MemoryReference(child, cg);
-      if (cg->useSSEForDoublePrecision())
-         {
-         target = cg->allocateRegister(TR_FPR);
-         generateRegMemInstruction(CVTSI2SDRegMem, node, target, tempMR, cg);
-         }
-      else
-         {
-         target = cg->allocateRegister(TR_X87);
-         generateFPRegMemInstruction(DILDRegMem, node, target, tempMR, cg);
-         }
+      target = cg->allocateRegister(TR_FPR);
+      generateRegMemInstruction(CVTSI2SDRegMem, node, target, tempMR, cg);
       tempMR->decNodeReferenceCounts(cg);
       }
    else
       {
       TR::Register *intReg = cg->evaluate(child);
-      if (cg->useSSEForDoublePrecision())
+
+      switch (node->getOpCodeValue())
          {
-         switch (node->getOpCodeValue())
-            {
-            case TR::b2d:
-               generateRegRegInstruction(MOVSXReg4Reg1, node, intReg, intReg, cg);
-               break;
-            case TR::bu2d:
-               generateRegRegInstruction(MOVZXReg4Reg1, node, intReg, intReg, cg);
-               break;
-            case TR::s2d:
-               generateRegRegInstruction(MOVSXReg4Reg2, node, intReg, intReg, cg);
-               break;
-            case TR::su2d:
-               generateRegRegInstruction(MOVZXReg4Reg2, node, intReg, intReg, cg);
-               break;
-            case TR::i2d:
-               break;
-            default:
-               TR_ASSERT(0, "INVALID OP CODE");
-               break;
-            }
-         target = cg->allocateRegister(TR_FPR);
-         generateRegRegInstruction(CVTSI2SDRegReg4, node, target, intReg, cg);
+         case TR::b2d:
+            generateRegRegInstruction(MOVSXReg4Reg1, node, intReg, intReg, cg);
+            break;
+         case TR::bu2d:
+            generateRegRegInstruction(MOVZXReg4Reg1, node, intReg, intReg, cg);
+            break;
+         case TR::s2d:
+            generateRegRegInstruction(MOVSXReg4Reg2, node, intReg, intReg, cg);
+            break;
+         case TR::su2d:
+            generateRegRegInstruction(MOVZXReg4Reg2, node, intReg, intReg, cg);
+            break;
+         case TR::i2d:
+            break;
+         default:
+            TR_ASSERT(0, "INVALID OP CODE");
+            break;
          }
-      else
-         {
-         target = cg->allocateRegister(TR_X87);
-         tempMR = generateX86MemoryReference(cg->allocateLocalTemp(), cg);
-         generateMemRegInstruction(S4MemReg, node, tempMR, intReg, cg);
-         generateFPRegMemInstruction(DILDRegMem, node, target, generateX86MemoryReference(*tempMR, 0, cg), cg);
-         }
+      target = cg->allocateRegister(TR_FPR);
+      generateRegRegInstruction(CVTSI2SDRegReg4, node, target, intReg, cg);
+
       cg->decReferenceCount(child);
       }
 
