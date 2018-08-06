@@ -1681,21 +1681,7 @@ TR::Register *OMR::X86::TreeEvaluator::fRegLoadEvaluator(TR::Node *node, TR::Cod
    TR::Register *globalReg = node->getRegister();
    if (globalReg == NULL)
       {
-      if (cg->useSSEForSinglePrecision())
-         {
-         globalReg = cg->allocateSinglePrecisionRegister(TR_FPR);
-         }
-      else
-         {
-         globalReg = cg->allocateSinglePrecisionRegister(TR_X87);
-
-         if (!comp->getJittedMethodSymbol()->usesSinglePrecisionMode() &&
-              node->needsPrecisionAdjustment())
-            {
-            globalReg->setMayNeedPrecisionAdjustment();
-            globalReg->setNeedsPrecisionAdjustment();
-            }
-         }
+      globalReg = cg->allocateSinglePrecisionRegister(TR_FPR);
       node->setRegister(globalReg);
       }
    return globalReg;
@@ -1707,20 +1693,7 @@ TR::Register *OMR::X86::TreeEvaluator::dRegLoadEvaluator(TR::Node *node, TR::Cod
    TR::Register *globalReg = node->getRegister();
    if (globalReg == NULL)
       {
-      if (cg->useSSEForDoublePrecision())
-         {
-         globalReg = cg->allocateRegister(TR_FPR);
-         }
-      else
-         {
-         globalReg = cg->allocateRegister(TR_X87);
-         if ((comp->getCurrentMethod()->isStrictFP() || comp->getOption(TR_StrictFP)) ||
-             node->needsPrecisionAdjustment())
-            {
-            globalReg->setMayNeedPrecisionAdjustment();
-            globalReg->setNeedsPrecisionAdjustment();
-            }
-         }
+      globalReg = cg->allocateRegister(TR_FPR);
       node->setRegister(globalReg);
       }
    return globalReg;
