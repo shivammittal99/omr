@@ -83,13 +83,13 @@ OMR::ArithEnv::floatNegate(float a)
 float
 OMR::ArithEnv::nextRepresentable(float a)
    {
-   return nextafter(a, FLOAT_POS_INFINITY);
+   return nextafterf(a, FLOAT_POS_INFINITY);
    }
 
 float
 OMR::ArithEnv::previousRepresentable(float a)
    {
-   return nextafter(FLOAT_NEG_INFINITY, a);
+   return nextafterf(FLOAT_NEG_INFINITY, a);
    }
 
 double
